@@ -1,41 +1,39 @@
-import { getStore } from "@netlify/blobs";
-import { getUser } from "@netlify/identity";
+import { connectLambda, getStore } from "@netlify/blobs";
 
-/* Alle Verkäufe liegen als EIN JSON-Array unter dem Key "sales".
-   Für ein 4-Personen-Team völlig ausreichend (wenig gleichzeitige Schreibzugriffe). */
+/* Alle Verkäufe liegen als EIN JSON-Array unter dem Key "sales". */
 const KEY = "sales";
 const RATE = { website: 0.20, nfc: 0.60, backend: 0.10 };
 
-const json = (data, status = 200) =>
-  new Response(JSON.stringify(data), {
-    status,
-    headers: { "Content-Type": "application/json" },
-  });
+const res = (data, statusCode = 200) => ({
+  statusCode,
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify(data),
+});
 
-export default async (req) => {
-  // 1) Wer ruft an?  -> aus dem verifizierten Identity-Token, NICHT aus dem Body.
-  //    (Diese eine Zeile ist der Wiring-Punkt: gegen die aktuelle
-  //     @netlify/identity-Doku prüfen, falls der Build anders erwartet.)
-  const user = await getUser(req);
-  if (!user) return json({ error: "Nicht angemeldet" }, 401);
+export const handler = async (event, context) => {
+  // Blobs im Lambda-Modus initialisieren (MUSS vor getStore stehen).
+  connectLambda(event);
 
-  const roles = user.app_metadata?.roles || [];
+  // Wer ruft an? -> aus dem verifizierten Identity-Token, NICHT aus dem Body.
+  const user = context.clientContext && context.clientContext.user;
+  if (!user) return res({ error: "Nicht angemeldet" }, 401);
+
+  const roles = (user.app_metadata && user.app_metadata.roles) || [];
   const isAdmin = roles.includes("admin");
   const me = {
-    id: user.id,
-    name: user.user_metadata?.full_name || user.email,
+    id: user.sub,
+    name: (user.user_metadata && user.user_metadata.full_name) || user.email,
   };
 
-  // 2) Datenspeicher öffnen. "strong" = Bestätigungen sind sofort sichtbar.
-  const store = getStore({ name: "elevate", consistency: "strong" });
+  const store = getStore("elevate");
   const sales = (await store.get(KEY, { type: "json" })) || [];
   const persist = () => store.setJSON(KEY, sales);
+  const method = event.httpMethod;
 
   /* ---------- LESEN ---------- */
-  if (req.method === "GET") {
-    if (isAdmin) return json({ role: "admin", sales });
-    // Affiliate: nur eigene Verkäufe + bestätigter Umsatz aller (fürs Leaderboard)
-    return json({
+  if (method === "GET") {
+    if (isAdmin) return res({ role: "admin", sales });
+    return res({
       role: "affiliate",
       mine: sales.filter((s) => s.ownerId === me.id),
       board: sales
@@ -45,13 +43,16 @@ export default async (req) => {
   }
 
   /* ---------- VERKAUF ANLEGEN (Affiliate) ---------- */
-  if (req.method === "POST") {
-    const b = await req.json();
+  if (method === "POST") {
+    const b = JSON.parse(event.body || "{}");
     if (!b.client || !RATE[b.type] || !(b.price > 0))
-      return json({ error: "Ungültige Eingabe" }, 400);
+      return res({ error: "Ungültige Eingabe" }, 400);
 
     sales.push({
-      id: crypto.randomUUID(),
+      id:
+        (globalThis.crypto && globalThis.crypto.randomUUID
+          ? globalThis.crypto.randomUUID()
+          : String(Date.now()) + Math.random().toString(16).slice(2)),
       ownerId: me.id, // Besitzer IMMER aus dem Token
       ownerName: me.name,
       client: String(b.client).trim(),
@@ -61,46 +62,39 @@ export default async (req) => {
       createdAt: Date.now(),
     });
     await persist();
-    return json({ ok: true });
+    return res({ ok: true });
   }
 
   /* ---------- STATUS ÄNDERN ---------- */
-  if (req.method === "PATCH") {
-    const { id, status } = await req.json();
+  if (method === "PATCH") {
+    const { id, status } = JSON.parse(event.body || "{}");
     const s = sales.find((x) => x.id === id);
-    if (!s) return json({ error: "Nicht gefunden" }, 404);
+    if (!s) return res({ error: "Nicht gefunden" }, 404);
 
     if (isAdmin) {
       if (!["open", "done", "confirmed"].includes(status))
-        return json({ error: "Ungültiger Status" }, 400);
-      s.status = status; // Admin darf alles: abschließen, bestätigen, widerrufen
+        return res({ error: "Ungültiger Status" }, 400);
+      s.status = status; // Admin darf alles
     } else {
-      // Affiliate darf NUR den eigenen Verkauf von "offen" -> "abgeschlossen"
+      // Affiliate: nur eigenen Verkauf von "offen" -> "abgeschlossen"
       if (s.ownerId !== me.id || !(s.status === "open" && status === "done"))
-        return json({ error: "Nicht erlaubt" }, 403);
+        return res({ error: "Nicht erlaubt" }, 403);
       s.status = "done";
     }
     await persist();
-    return json({ ok: true });
+    return res({ ok: true });
   }
 
   /* ---------- LÖSCHEN ---------- */
-  if (req.method === "DELETE") {
-    const id = new URL(req.url).searchParams.get("id");
+  if (method === "DELETE") {
+    const id = event.queryStringParameters && event.queryStringParameters.id;
     const s = sales.find((x) => x.id === id);
-    if (!s) return json({ error: "Nicht gefunden" }, 404);
-
-    // Admin darf alles löschen; Affiliate nur eigene, noch offene Einträge
+    if (!s) return res({ error: "Nicht gefunden" }, 404);
     if (!isAdmin && !(s.ownerId === me.id && s.status === "open"))
-      return json({ error: "Nicht erlaubt" }, 403);
-
-    const next = sales.filter((x) => x.id !== id);
-    await store.setJSON(KEY, next);
-    return json({ ok: true });
+      return res({ error: "Nicht erlaubt" }, 403);
+    await store.setJSON(KEY, sales.filter((x) => x.id !== id));
+    return res({ ok: true });
   }
 
-  return json({ error: "Methode nicht erlaubt" }, 405);
+  return res({ error: "Methode nicht erlaubt" }, 405);
 };
-
-// Die Function ist danach erreichbar unter  /api/sales
-export const config = { path: "/api/sales" };
