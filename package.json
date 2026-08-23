@@ -1,0 +1,9 @@
+{
+  "name": "elevate-portal",
+  "version": "1.0.0",
+  "type": "module",
+  "dependencies": {
+    "@netlify/blobs": "^8.0.0",
+    "@netlify/identity": "^1.2.0"
+  }
+}
