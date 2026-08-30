@@ -3,10 +3,12 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-<title>Elevate Digital · Affiliate-Portal</title>
+<title>Elevate Digital · Team-Portal</title>
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,500;8..60,600;8..60,700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css" />
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
 <script src="https://identity.netlify.com/v1/netlify-identity-widget.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.3.1/umd/react.production.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.3.1/umd/react-dom.production.min.js"></script>
@@ -17,7 +19,7 @@
     --ink:#0f1a3a; --ink-2:#46516f; --muted:#7b859e;
     --line:#e3e8f4; --line-2:#d3daec; --white:#fff; --paper:#f7f9fd;
     --green:#157f52; --green-bg:#e5f4ec; --amber:#9a6a12; --amber-bg:#fbf1de;
-    --red:#b3283a; --red-bg:#fbeaec;
+    --red:#b3283a; --red-bg:#fbeaec; --teal:#0e6f77; --teal-bg:#e2f2f3;
     --shadow:0 1px 2px rgba(15,26,58,.05), 0 8px 28px -14px rgba(15,26,58,.18);
   }
   * { box-sizing:border-box; margin:0; padding:0; }
@@ -29,7 +31,7 @@
   button { font-family:inherit; cursor:pointer; }
   input, select { font-family:inherit; }
 
-  .topbar { background:var(--white); border-bottom:1px solid var(--line); position:sticky; top:0; z-index:20; }
+  .topbar { background:var(--white); border-bottom:1px solid var(--line); position:sticky; top:0; z-index:1200; }
   .topbar-in { max-width:1080px; margin:0 auto; padding:0 20px; height:64px;
     display:flex; align-items:center; justify-content:space-between; gap:16px; }
   .logo { display:flex; align-items:center; gap:12px; }
@@ -68,7 +70,7 @@
 
   .hero { padding:70px 0 40px; max-width:720px; }
   .hero .kicker { font-size:12px; font-weight:700; letter-spacing:0.16em; text-transform:uppercase; color:var(--royal); margin-bottom:20px; }
-  .hero h1 { font-size:clamp(34px,6vw,54px); font-weight:700; line-height:1.06; letter-spacing:-0.02em; color:var(--ink); }
+  .hero h1 { font-size:clamp(34px,6vw,54px); font-weight:700; line-height:1.06; letter-spacing:-0.02em; }
   .hero p { font-size:clamp(16px,2.4vw,19px); color:var(--ink-2); margin:22px 0 32px; max-width:560px; }
   .hero-cta { display:flex; gap:12px; flex-wrap:wrap; align-items:center; }
   .feats { display:grid; grid-template-columns:repeat(3,1fr); gap:1px; background:var(--line);
@@ -82,14 +84,20 @@
     font-weight:700; font-size:15px; background:var(--royal-lt); color:var(--royal); }
   .avatar.admin { background:var(--royal); color:#fff; }
 
+  .tabs { display:flex; gap:6px; background:#fff; border:1px solid var(--line); border-radius:12px;
+    padding:5px; box-shadow:var(--shadow); width:fit-content; margin:24px auto 4px; }
+  .tab { border:none; background:transparent; color:var(--ink-2); font-weight:600; font-size:14px;
+    padding:9px 20px; border-radius:8px; }
+  .tab.on { background:var(--royal); color:#fff; }
+
   .stat-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:14px; }
   .stat { background:#fff; border:1px solid var(--line); border-radius:13px; padding:18px; box-shadow:var(--shadow); }
   .stat .lab { font-size:11.5px; font-weight:600; color:var(--muted); text-transform:uppercase; letter-spacing:0.06em; }
-  .stat .num { font-family:"Source Serif 4",serif; font-size:30px; font-weight:700; margin-top:6px; color:var(--ink); }
+  .stat .num { font-family:"Source Serif 4",serif; font-size:30px; font-weight:700; margin-top:6px; }
   .stat .num.blue { color:var(--royal); } .stat .num.green { color:var(--green); } .stat .num.amber { color:var(--amber); }
   .stat .foot { font-size:12px; color:var(--muted); margin-top:4px; }
 
-  .section-title { display:flex; align-items:baseline; justify-content:space-between; gap:12px; margin:34px 0 14px; }
+  .section-title { display:flex; align-items:baseline; justify-content:space-between; gap:12px; margin:24px 0 14px; }
   .section-title h2 { font-size:19px; font-weight:700; letter-spacing:-0.01em; }
   .section-title .meta { font-size:12.5px; color:var(--muted); }
 
@@ -114,9 +122,12 @@
   .badge { display:inline-flex; align-items:center; gap:6px; font-size:11.5px; font-weight:600;
     padding:4px 10px; border-radius:999px; }
   .badge::before { content:""; width:6px; height:6px; border-radius:50%; background:currentColor; }
-  .badge.open { color:var(--amber); background:var(--amber-bg); }
-  .badge.done { color:var(--royal); background:var(--royal-lt); }
-  .badge.confirmed { color:var(--green); background:var(--green-bg); }
+  .badge.open, .badge.st-neu { color:var(--muted); background:#eef1f7; }
+  .badge.done, .badge.st-termin { color:var(--royal); background:var(--royal-lt); }
+  .badge.confirmed, .badge.st-verkauft { color:var(--green); background:var(--green-bg); }
+  .badge.st-interessiert { color:var(--teal); background:var(--teal-bg); }
+  .badge.st-nicht_interessiert { color:var(--red); background:var(--red-bg); }
+  .badge.w { color:var(--ink-2); background:#eef1f7; }
 
   .commission { font-family:"Source Serif 4",serif; font-weight:700; font-size:15px; }
   .commission.paid { color:var(--green); }
@@ -132,30 +143,64 @@
   .lb-sub { font-size:12px; color:var(--muted); }
   .lb-fig { text-align:right; }
   .lb-fig .rev { font-family:"Source Serif 4",serif; font-weight:700; font-size:17px; }
-  .lb-fig .dl { font-size:12px; color:var(--muted); margin-top:1px; }
 
   .empty { text-align:center; padding:40px 20px; color:var(--muted); }
   .empty .big { font-family:"Source Serif 4",serif; font-size:17px; color:var(--ink-2); margin-bottom:6px; }
   .empty p { font-size:13.5px; }
 
   .grid-2 { display:grid; grid-template-columns:360px 1fr; gap:20px; align-items:start; }
+  .grid-map { display:grid; grid-template-columns:1fr 1fr; gap:20px; align-items:start; }
   .filters { display:flex; gap:8px; flex-wrap:wrap; }
   .chip { border:1px solid var(--line-2); background:#fff; color:var(--ink-2); font-size:12.5px; font-weight:600;
     padding:6px 13px; border-radius:999px; }
   .chip.on { background:var(--royal); border-color:var(--royal); color:#fff; }
 
+  .search-box { position:relative; margin-bottom:12px; }
+  .search-box input { width:100%; border:1px solid var(--line-2); border-radius:9px; padding:11px 12px; font-size:14px; }
+  .search-box input:focus { outline:none; border-color:var(--royal); box-shadow:0 0 0 3px rgba(27,58,160,.12); }
+  .suggestions { position:absolute; z-index:1500; left:0; right:0; top:calc(100% + 4px); background:#fff;
+    border:1px solid var(--line-2); border-radius:10px; box-shadow:var(--shadow); overflow:hidden; }
+  .suggestion { padding:10px 12px; cursor:pointer; border-bottom:1px solid var(--line); }
+  .suggestion:last-child { border-bottom:none; }
+  .suggestion:hover { background:var(--royal-lt); }
+  .suggestion .s-name { font-weight:600; font-size:14px; }
+  .suggestion .s-addr { font-size:12px; color:var(--muted); }
+  #map { width:100%; height:420px; border-radius:12px; border:1px solid var(--line); background:#e9edf5; z-index:1; }
+  .leaflet-container { border-radius:12px; }
+  .place-panel { margin-top:14px; border:1px solid var(--royal); background:var(--royal-lt); border-radius:12px; padding:16px; }
+  .place-panel h4 { font-size:16px; font-weight:700; }
+  .place-panel .pp-meta { font-size:13px; color:var(--ink-2); margin-top:4px; }
+  .place-panel .pp-actions { display:flex; gap:10px; margin-top:14px; flex-wrap:wrap; }
+  .map-hint { font-size:12.5px; color:var(--muted); margin-bottom:12px; }
+  code { background:#e4e9f4; padding:1px 5px; border-radius:4px; font-size:12px; }
+
+  .lead { border:1px solid var(--line); border-radius:12px; padding:14px 16px; background:#fff; }
+  .lead + .lead { margin-top:10px; }
+  .lead-top { display:flex; align-items:flex-start; justify-content:space-between; gap:12px; }
+  .lead .l-name { font-weight:600; font-size:15px; }
+  .lead .l-meta { font-size:12.5px; color:var(--ink-2); margin-top:2px; }
+  .lead-tags { display:flex; gap:8px; flex-wrap:wrap; margin-top:10px; align-items:center; }
+  .resv { font-size:11.5px; font-weight:600; color:var(--amber); background:var(--amber-bg); padding:4px 10px; border-radius:999px; }
+  .resv.mine { color:var(--green); background:var(--green-bg); }
+  .lead-controls { display:flex; gap:10px; flex-wrap:wrap; margin-top:13px; padding-top:13px; border-top:1px solid var(--line); align-items:flex-end; }
+  .mini { display:flex; flex-direction:column; gap:4px; }
+  .mini label { font-size:11px; font-weight:600; color:var(--muted); text-transform:uppercase; letter-spacing:0.04em; }
+  .mini select { border:1px solid var(--line-2); border-radius:8px; padding:7px 9px; font-size:13px; background:#fff; color:var(--ink); }
+  .lead-controls .spacer { flex:1; }
+
   .center-state { min-height:60vh; display:grid; place-items:center; text-align:center; padding:40px 20px; }
   .spinner { width:34px; height:34px; border-radius:50%; border:3px solid var(--line-2);
     border-top-color:var(--royal); animation:spin .8s linear infinite; margin:0 auto 16px; }
   @keyframes spin { to { transform:rotate(360deg); } }
-  .banner { background:var(--red-bg); color:var(--red); border:1px solid #f0c9cf; border-radius:10px;
-    padding:12px 14px; font-size:13px; margin-bottom:18px; }
+  .banner { background:var(--red-bg); color:var(--red); border:1px solid #f0c9cf; border-radius:10px; padding:12px 14px; font-size:13px; }
+  .banner.ok { background:var(--green-bg); color:var(--green); border-color:#bfe3cf; }
+  .banner.info { background:var(--amber-bg); color:var(--amber); border-color:#ecd9ac; }
 
   footer.site { border-top:1px solid var(--line); background:#fff; }
   footer.site .in { max-width:1080px; margin:0 auto; padding:22px 20px; font-size:12.5px; color:var(--muted);
     display:flex; justify-content:space-between; gap:12px; flex-wrap:wrap; }
 
-  @media (max-width:860px){ .feats{ grid-template-columns:1fr; } .grid-2{ grid-template-columns:1fr; } }
+  @media (max-width:860px){ .feats{ grid-template-columns:1fr; } .grid-2, .grid-map{ grid-template-columns:1fr; } }
   @media (max-width:480px){ .whoami{ display:none; } }
 </style>
 </head>
@@ -163,26 +208,45 @@
 <div id="root"></div>
 
 <script type="text/babel">
-const { useState, useEffect, useMemo, useCallback } = React;
+const { useState, useEffect, useMemo, useCallback, useRef } = React;
 
-const API = "/.netlify/functions/sales";
+/* ============================================================
+   >>> HIER DEINEN GEOAPIFY-SCHLUESSEL EINFUEGEN <<<
+   Kostenlos & ohne Kreditkarte: https://myprojects.geoapify.com
+   ============================================================ */
+const GEOAPIFY_KEY = "HIER_DEINEN_GEOAPIFY_KEY_EINFUEGEN";
+
+const SALES_API = "/.netlify/functions/sales";
+const LEADS_API = "/.netlify/functions/leads";
 const RATE = { website: 0.20, nfc: 0.60, backend: 0.10 };
 const TYPES = [
-  { id: "website", label: "Webdesign / Local-SEO Setup", rate: "20 %" },
-  { id: "nfc",     label: "NFC-Bewertungsaufsteller",     rate: "60 %" },
-  { id: "backend", label: "Backend Cross-Sell (Website nach NFC)", rate: "10 %" },
+  { id:"website", label:"Webdesign / Local-SEO Setup", rate:"20 %" },
+  { id:"nfc",     label:"NFC-Bewertungsaufsteller",     rate:"60 %" },
+  { id:"backend", label:"Backend Cross-Sell (Website nach NFC)", rate:"10 %" },
 ];
 const TYPE_LABEL = Object.fromEntries(TYPES.map(t => [t.id, t.label]));
-const STATUS = {
-  open: { cls:"open", label:"Offen" },
-  done: { cls:"done", label:"Abgeschlossen" },
-  confirmed: { cls:"confirmed", label:"Bestätigt" },
-};
+const SALE_STATUS = { open:{cls:"open",label:"Offen"}, done:{cls:"done",label:"Abgeschlossen"}, confirmed:{cls:"confirmed",label:"Bestätigt"} };
 
-const fmtEur = n => new Intl.NumberFormat("de-DE", { style:"currency", currency:"EUR", maximumFractionDigits:0 }).format(n || 0);
+const LEAD_STATUS = [
+  { id:"neu", label:"Neu" },
+  { id:"interessiert", label:"Interessiert" },
+  { id:"nicht_interessiert", label:"Nicht interessiert" },
+  { id:"termin", label:"Termin" },
+  { id:"verkauft", label:"Verkauft" },
+];
+const LEAD_STATUS_LABEL = Object.fromEntries(LEAD_STATUS.map(s => [s.id, s.label]));
+const WEBSITE_OPTS = [
+  { id:"unbekannt", label:"Unbekannt" },
+  { id:"interessiert", label:"Interessiert" },
+  { id:"vielleicht", label:"Vielleicht" },
+  { id:"nicht_interessiert", label:"Nicht interessiert" },
+];
+const WEBSITE_LABEL = Object.fromEntries(WEBSITE_OPTS.map(s => [s.id, s.label]));
+
+const fmtEur = n => new Intl.NumberFormat("de-DE",{style:"currency",currency:"EUR",maximumFractionDigits:0}).format(n||0);
 const commissionFor = s => Math.round(s.price * (RATE[s.type] || 0));
 const initialsOf = name => {
-  const p = (name || "").trim().split(/\s+/);
+  const p = (name||"").trim().split(/\s+/);
   return (((p[0]||"")[0]||"") + ((p[1]||"")[0] || (p[0]||"")[1] || "")).toUpperCase() || "?";
 };
 
@@ -190,34 +254,32 @@ const initialsOf = name => {
 async function authHeader() {
   const u = window.netlifyIdentity && window.netlifyIdentity.currentUser();
   if (!u) return {};
-  await u.jwt();                                  // Token auffrischen, falls abgelaufen
+  await u.jwt();
   const token = u.token && u.token.access_token;
   return token ? { Authorization: "Bearer " + token } : {};
 }
-async function apiGet() {
-  const r = await fetch(API, { headers: await authHeader() });
+async function apiGet(url) {
+  const r = await fetch(url, { headers: await authHeader() });
   if (!r.ok) throw new Error("Status " + r.status);
   return r.json();
 }
-async function apiSend(method, body, qs) {
-  const r = await fetch(qs ? API + "?" + qs : API, {
+async function apiSend(url, method, body, qs) {
+  const r = await fetch(qs ? url + "?" + qs : url, {
     method,
-    headers: { ...(await authHeader()), "Content-Type": "application/json" },
+    headers: { ...(await authHeader()), "Content-Type":"application/json" },
     body: body ? JSON.stringify(body) : undefined,
   });
-  if (!r.ok) throw new Error("Status " + r.status);
+  if (!r.ok) { let m=""; try { m=(await r.json()).error||""; } catch(e){} throw new Error(m || ("Status "+r.status)); }
   return r.json();
 }
 
-/* ---------- Topbar ---------- */
+/* ============================================================ */
 function Topbar({ user, role }) {
-  const login = () => window.netlifyIdentity.open("login");
-  const logout = () => window.netlifyIdentity.logout();
   return (
     <div className="topbar"><div className="topbar-in">
       <div className="logo">
         <div className="crest serif">ED</div>
-        <div><div className="name">Elevate Digital</div><div className="sub">Affiliate-Portal</div></div>
+        <div><div className="name">Elevate Digital</div><div className="sub">Team-Portal</div></div>
       </div>
       <div className="top-right">
         {user ? (<>
@@ -225,19 +287,16 @@ function Topbar({ user, role }) {
             <div className="n">{user.user_metadata?.full_name || user.email}</div>
             <div className="r">{role === "admin" ? "Administrator" : "Affiliate"}</div>
           </div>
-          <div className={"avatar" + (role === "admin" ? " admin" : "")}>
-            {initialsOf(user.user_metadata?.full_name || user.email)}
-          </div>
-          <button className="btn line sm" onClick={logout}>Abmelden</button>
+          <div className={"avatar" + (role === "admin" ? " admin" : "")}>{initialsOf(user.user_metadata?.full_name || user.email)}</div>
+          <button className="btn line sm" onClick={() => window.netlifyIdentity.logout()}>Abmelden</button>
         </>) : (
-          <button className="btn" onClick={login}>Anmelden</button>
+          <button className="btn" onClick={() => window.netlifyIdentity.open("login")}>Anmelden</button>
         )}
       </div>
     </div></div>
   );
 }
 
-/* ---------- Landing ---------- */
 function Landing() {
   const login = () => window.netlifyIdentity.open("login");
   return (
@@ -245,49 +304,237 @@ function Landing() {
       <section className="hero">
         <div className="kicker">Elevate Digital · eine Marke der Devic Industries</div>
         <h1 className="serif">Das Portal für unser Vertriebsteam.</h1>
-        <p>Trage deine Verkäufe ein, verfolge den Status jeder Provision und sieh in Echtzeit,
-           wo du im Team stehst. Jeder Abschluss zählt, sobald er bestätigt ist.</p>
+        <p>Läden auf der Karte finden, Leads reservieren und den Status pflegen — und jede Provision
+           transparent verfolgen. Ein Werkzeug für die ganze Crew.</p>
         <div className="hero-cta">
           <button className="btn" onClick={login}>Anmelden</button>
           <span style={{fontSize:"13px", color:"var(--muted)"}}>Zugang nur für Team-Mitglieder</span>
         </div>
       </section>
       <div className="feats">
-        <div className="feat"><div className="no serif">Erstens</div><h4>Verkäufe eintragen</h4>
-          <p>Auftrag rein, Kunde und Verkaufspreis erfassen. Das Modell erkennt die Provision automatisch.</p></div>
-        <div className="feat"><div className="no serif">Zweitens</div><h4>Provision nach Bestätigung</h4>
-          <p>Deine Provision wird sichtbar, sobald der Abschluss von der Geschäftsführung bestätigt wurde.</p></div>
-        <div className="feat"><div className="no serif">Drittens</div><h4>Das Live-Ranking</h4>
-          <p>Bestätigter Umsatz aller Closer auf einen Blick — sichtbar fürs ganze Team.</p></div>
+        <div className="feat"><div className="no serif">Karte</div><h4>Läden finden</h4>
+          <p>Suchen, auswählen, als Unternehmen übernehmen — mit Adresse und Standort.</p></div>
+        <div className="feat"><div className="no serif">Leads</div><h4>Reservieren & pflegen</h4>
+          <p>Status setzen, reservieren, für alle sichtbar. Kein Doppel-Ansprechen mehr.</p></div>
+        <div className="feat"><div className="no serif">Provision</div><h4>Transparent abrechnen</h4>
+          <p>Verkäufe eintragen, Provision nach Bestätigung, Live-Leaderboard.</p></div>
       </div>
     </div>
   );
 }
 
-/* ---------- Leaderboard ---------- */
+/* ============================================================
+   KARTE + LEADS  (Leaflet + Geoapify)
+   ============================================================ */
+function MapLeads({ myId, isAdmin }) {
+  const mapDiv = useRef(null);
+  const mapRef = useRef(null);
+  const markerRef = useRef(null);
+  const debounceRef = useRef(null);
+  const [q, setQ] = useState("");
+  const [suggestions, setSuggestions] = useState([]);
+  const [selected, setSelected] = useState(null);
+  const [leads, setLeads] = useState([]);
+  const [noKey, setNoKey] = useState(false);
+  const [msg, setMsg] = useState(null);
+
+  const flash = (type, text) => { setMsg({type,text}); setTimeout(() => setMsg(null), 2800); };
+
+  const loadLeads = useCallback(async () => {
+    try { const j = await apiGet(LEADS_API); setLeads(j.leads || []); }
+    catch(e){ flash("err","Leads konnten nicht geladen werden."); }
+  }, []);
+  useEffect(() => { loadLeads(); }, [loadLeads]);
+
+  useEffect(() => {
+    if (!GEOAPIFY_KEY || GEOAPIFY_KEY.indexOf("HIER_DEIN") === 0) { setNoKey(true); return; }
+    if (!window.L || !mapDiv.current) return;
+    const map = window.L.map(mapDiv.current).setView([50.2268, 8.618], 13);
+    window.L.tileLayer(
+      "https://maps.geoapify.com/v1/tile/osm-bright/{z}/{x}/{y}.png?apiKey=" + GEOAPIFY_KEY,
+      { attribution: '© OpenStreetMap · © Geoapify', maxZoom: 20 }
+    ).addTo(map);
+    mapRef.current = map;
+    setTimeout(() => map.invalidateSize(), 200);
+    return () => { map.remove(); mapRef.current = null; };
+  }, []);
+
+  const onType = (text) => {
+    setQ(text);
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    if (noKey || !text || text.trim().length < 3) { setSuggestions([]); return; }
+    debounceRef.current = setTimeout(async () => {
+      try {
+        const url = "https://api.geoapify.com/v1/geocode/autocomplete?text=" + encodeURIComponent(text)
+          + "&filter=countrycode:de&bias=proximity:8.618,50.2268&limit=6&lang=de&apiKey=" + GEOAPIFY_KEY;
+        const r = await fetch(url);
+        const j = await r.json();
+        setSuggestions(j.features || []);
+      } catch(e){ setSuggestions([]); }
+    }, 300);
+  };
+
+  const pick = (f) => {
+    const p = f.properties || {};
+    const lat = p.lat, lng = p.lon;
+    const raw = (p.datasource && p.datasource.raw) || {};
+    const data = {
+      placeId: p.place_id || (lat + "," + lng),
+      name: p.name || p.address_line1 || p.formatted || "Unbenannt",
+      address: p.formatted || "",
+      phone: p["contact:phone"] || raw.phone || raw["contact:phone"] || "",
+      lat, lng,
+    };
+    setSelected(data); setSuggestions([]); setQ(data.name);
+    if (mapRef.current) {
+      mapRef.current.setView([lat, lng], 16);
+      if (markerRef.current) markerRef.current.remove();
+      markerRef.current = window.L.marker([lat, lng]).addTo(mapRef.current);
+    }
+  };
+
+  const selectBusiness = async () => {
+    if (!selected) return;
+    try { const r = await apiSend(LEADS_API, "POST", selected);
+      flash(r.duplicate ? "info" : "ok", r.duplicate ? "War schon in der Liste." : "Unternehmen uebernommen.");
+      setSelected(null); setQ(""); loadLeads();
+    } catch(e){ flash("err","Konnte nicht uebernehmen."); }
+  };
+  const patchLead = async (id, changes) => {
+    try { await apiSend(LEADS_API, "PATCH", { id, ...changes }); loadLeads(); }
+    catch(e){ flash("err", e.message || "Fehler."); }
+  };
+  const removeLead = async (id) => {
+    try { await apiSend(LEADS_API, "DELETE", null, "id="+encodeURIComponent(id)); loadLeads(); }
+    catch(e){ flash("err", e.message || "Loeschen nicht erlaubt."); }
+  };
+
+  const sorted = leads.slice().sort((a,b) => b.updatedAt - a.updatedAt);
+
+  return (
+    <div className="page">
+      <div className="section-title"><h2 className="serif">Läden & Leads</h2>
+        <span className="meta">{leads.length} Leads · für alle sichtbar</span></div>
+
+      {msg && <div className={"banner " + (msg.type==="ok"?"ok":msg.type==="info"?"info":"")} style={{marginBottom:16}}>{msg.text}</div>}
+
+      <div className="grid-map">
+        <div className="card card-pad">
+          <div className="eyebrow">Laden suchen</div>
+          {noKey ? (
+            <div className="banner info">Geoapify-Schlüssel fehlt noch. Hol dir kostenlos (ohne Kreditkarte) einen unter
+              myprojects.geoapify.com und trag ihn oben in der <b>index.html</b> bei <code>GEOAPIFY_KEY</code> ein.</div>
+          ) : (
+            <div className="map-hint">Tippe einen Ladennamen oder eine Adresse, wähl den Treffer, dann „Unternehmen auswählen".</div>
+          )}
+
+          {!noKey && (
+            <div className="search-box">
+              <input value={q} placeholder="z. B. Pizzeria Da Enzo Bad Homburg"
+                onChange={e => onType(e.target.value)} />
+              {suggestions.length > 0 && (
+                <div className="suggestions">
+                  {suggestions.map((f,i) => (
+                    <div key={(f.properties&&f.properties.place_id)||i} className="suggestion" onClick={() => pick(f)}>
+                      <div className="s-name">{(f.properties&&(f.properties.name||f.properties.address_line1))||f.properties.formatted}</div>
+                      <div className="s-addr">{f.properties&&f.properties.formatted}</div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          <div id="map" ref={mapDiv} style={{ display: noKey ? "none":"block" }}></div>
+
+          {selected && (
+            <div className="place-panel">
+              <h4>{selected.name}</h4>
+              <div className="pp-meta">{selected.address}{selected.phone ? " · " + selected.phone : ""}</div>
+              <div className="pp-actions">
+                <button className="btn" onClick={selectBusiness}>Unternehmen auswählen</button>
+                <button className="btn line" onClick={() => { setSelected(null); setQ(""); }}>Abbrechen</button>
+              </div>
+            </div>
+          )}
+        </div>
+
+        <div className="card">
+          <div className="card-head"><h3>Leads</h3><span className="hint">{leads.length} Einträge</span></div>
+          <div className="card-pad">
+            {sorted.length === 0 ? (
+              <div className="empty"><div className="big serif">Noch keine Leads</div>
+                <p>Such links einen Laden und übernimm ihn.</p></div>
+            ) : sorted.map(l => (
+              <LeadCard key={l.id} lead={l} myId={myId} isAdmin={isAdmin}
+                onStatus={v => patchLead(l.id,{status:v})}
+                onWebsite={v => patchLead(l.id,{website:v})}
+                onReserve={() => patchLead(l.id,{reserve:true})}
+                onFree={() => patchLead(l.id,{reserve:false})}
+                onRemove={() => removeLead(l.id)} />
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function LeadCard({ lead, myId, isAdmin, onStatus, onWebsite, onReserve, onFree, onRemove }) {
+  const reserved = lead.reservedBy;
+  const mine = reserved && reserved.id === myId;
+  const canFree = mine || isAdmin;
+  const canDelete = isAdmin || (lead.createdBy && lead.createdBy.id === myId);
+  return (
+    <div className="lead">
+      <div className="lead-top">
+        <div>
+          <div className="l-name">{lead.name}</div>
+          <div className="l-meta">{lead.address}{lead.phone ? " · " + lead.phone : ""}</div>
+        </div>
+        <span className={"badge st-" + lead.status}>{LEAD_STATUS_LABEL[lead.status]}</span>
+      </div>
+      <div className="lead-tags">
+        <span className="badge w">Website: {WEBSITE_LABEL[lead.website]}</span>
+        {reserved && <span className={"resv" + (mine?" mine":"")}>{mine ? "Von dir reserviert" : "Reserviert · " + reserved.name}</span>}
+      </div>
+      <div className="lead-controls">
+        <div className="mini"><label>Status</label>
+          <select value={lead.status} onChange={e => onStatus(e.target.value)}>
+            {LEAD_STATUS.map(s => <option key={s.id} value={s.id}>{s.label}</option>)}
+          </select></div>
+        <div className="mini"><label>Website-Interesse</label>
+          <select value={lead.website} onChange={e => onWebsite(e.target.value)}>
+            {WEBSITE_OPTS.map(s => <option key={s.id} value={s.id}>{s.label}</option>)}
+          </select></div>
+        <div className="spacer"></div>
+        {!reserved && <button className="btn sm" onClick={onReserve}>Reservieren</button>}
+        {reserved && canFree && <button className="btn line sm" onClick={onFree}>Freigeben</button>}
+        {canDelete && <button className="btn danger sm" onClick={onRemove}>Löschen</button>}
+      </div>
+    </div>
+  );
+}
+
+/* ============================================================
+   PROVISIONEN (Verkäufe)
+   ============================================================ */
 function Leaderboard({ confirmed }) {
   const ranked = useMemo(() => {
     const map = {};
-    (confirmed || []).forEach(s => {
-      const k = s.ownerName || "?";
-      if (!map[k]) map[k] = { name:k, revenue:0, deals:0 };
-      map[k].revenue += s.price; map[k].deals += 1;
-    });
-    return Object.values(map).sort((a,b) => b.revenue - a.revenue);
+    (confirmed||[]).forEach(s => { const k=s.ownerName||"?"; if(!map[k])map[k]={name:k,revenue:0,deals:0}; map[k].revenue+=s.price; map[k].deals+=1; });
+    return Object.values(map).sort((a,b)=>b.revenue-a.revenue);
   }, [confirmed]);
-
   return (
     <div className="card">
       <div className="card-head"><h3>Leaderboard</h3>
         <span className="hint">Bestätigter Umsatz · {new Date().toLocaleDateString("de-DE",{month:"long",year:"numeric"})}</span></div>
-      <div className="card-pad" style={{paddingTop:6, paddingBottom:6}}>
-        {ranked.length === 0 ? (
-          <div className="empty"><div className="big serif">Noch nichts bestätigt</div>
-            <p>Sobald der erste Abschluss bestätigt ist, erscheint er hier.</p></div>
+      <div className="card-pad" style={{paddingTop:6,paddingBottom:6}}>
+        {ranked.length===0 ? (
+          <div className="empty"><div className="big serif">Noch nichts bestätigt</div><p>Sobald der erste Abschluss bestätigt ist, erscheint er hier.</p></div>
         ) : ranked.map((r,i) => (
-          <div key={r.name} className={"lb-row" + (i===0 ? " first" : "")}>
-            <div className="lb-rank">{i+1}</div>
-            <div className="avatar">{initialsOf(r.name)}</div>
+          <div key={r.name} className={"lb-row"+(i===0?" first":"")}>
+            <div className="lb-rank">{i+1}</div><div className="avatar">{initialsOf(r.name)}</div>
             <div><div className="lb-name">{r.name}</div><div className="lb-sub">{r.deals} {r.deals===1?"Abschluss":"Abschlüsse"}</div></div>
             <div className="lb-fig"><div className="rev">{fmtEur(r.revenue)}</div></div>
           </div>
@@ -297,9 +544,8 @@ function Leaderboard({ confirmed }) {
   );
 }
 
-/* ---------- Sale card ---------- */
 function SaleCard({ sale, view, onDone, onConfirm, onUnconfirm, onRemove }) {
-  const st = STATUS[sale.status] || STATUS.open;
+  const st = SALE_STATUS[sale.status] || SALE_STATUS.open;
   const isConfirmed = sale.status === "confirmed";
   return (
     <div className="sale">
@@ -308,94 +554,69 @@ function SaleCard({ sale, view, onDone, onConfirm, onUnconfirm, onRemove }) {
         <div className="price">{fmtEur(sale.price)}</div>
       </div>
       <div className="sale-bottom">
-        <div style={{display:"flex", alignItems:"center", gap:12, flexWrap:"wrap"}}>
-          <span className={"badge " + st.cls}>{st.label}</span>
-          {view === "admin" && <span className="who-tag">{sale.ownerName}</span>}
-          {isConfirmed
-            ? <span className="commission paid">Provision {fmtEur(commissionFor(sale))}</span>
-            : <span className="commission pending">Provision ausstehend</span>}
+        <div style={{display:"flex",alignItems:"center",gap:12,flexWrap:"wrap"}}>
+          <span className={"badge "+st.cls}>{st.label}</span>
+          {view==="admin" && <span className="who-tag">{sale.ownerName}</span>}
+          {isConfirmed ? <span className="commission paid">Provision {fmtEur(commissionFor(sale))}</span>
+                       : <span className="commission pending">Provision ausstehend</span>}
         </div>
         <div className="actions">
-          {view === "affiliate" && sale.status === "open" && (<>
+          {view==="affiliate" && sale.status==="open" && (<>
             <button className="btn ok sm" onClick={onDone}>Als abgeschlossen melden</button>
-            <button className="btn danger sm" onClick={onRemove}>Löschen</button>
-          </>)}
-          {view === "affiliate" && sale.status === "done" && (
-            <span style={{fontSize:"12.5px", color:"var(--muted)"}}>Wartet auf Bestätigung</span>)}
-          {view === "admin" && sale.status === "open" && (
-            <button className="btn line sm" onClick={onDone}>Als abgeschlossen markieren</button>)}
-          {view === "admin" && sale.status === "done" && (
-            <button className="btn ok sm" onClick={onConfirm}>Bestätigen</button>)}
-          {view === "admin" && sale.status === "confirmed" && (
-            <button className="btn line sm" onClick={onUnconfirm}>Bestätigung widerrufen</button>)}
-          {view === "admin" && (
-            <button className="btn danger sm" onClick={onRemove}>Löschen</button>)}
+            <button className="btn danger sm" onClick={onRemove}>Löschen</button></>)}
+          {view==="affiliate" && sale.status==="done" && (<span style={{fontSize:"12.5px",color:"var(--muted)"}}>Wartet auf Bestätigung</span>)}
+          {view==="admin" && sale.status==="open" && (<button className="btn line sm" onClick={onDone}>Als abgeschlossen markieren</button>)}
+          {view==="admin" && sale.status==="done" && (<button className="btn ok sm" onClick={onConfirm}>Bestätigen</button>)}
+          {view==="admin" && sale.status==="confirmed" && (<button className="btn line sm" onClick={onUnconfirm}>Bestätigung widerrufen</button>)}
+          {view==="admin" && (<button className="btn danger sm" onClick={onRemove}>Löschen</button>)}
         </div>
       </div>
     </div>
   );
 }
 
-/* ---------- Sale form ---------- */
 function SaleForm({ addSale }) {
-  const [client, setClient] = useState("");
-  const [type, setType] = useState("website");
-  const [price, setPrice] = useState("");
-  const [err, setErr] = useState("");
-  const [busy, setBusy] = useState(false);
-
+  const [client,setClient]=useState(""); const [type,setType]=useState("website");
+  const [price,setPrice]=useState(""); const [err,setErr]=useState(""); const [busy,setBusy]=useState(false);
   const submit = async () => {
-    const p = parseFloat(String(price).replace(",", "."));
-    if (!client.trim()) return setErr("Bitte Kundennamen eintragen.");
-    if (!p || p <= 0) return setErr("Bitte einen gültigen Verkaufspreis eintragen.");
+    const p = parseFloat(String(price).replace(",","."));
+    if(!client.trim()) return setErr("Bitte Kundennamen eintragen.");
+    if(!p||p<=0) return setErr("Bitte einen gültigen Verkaufspreis eintragen.");
     setErr(""); setBusy(true);
-    try { await addSale({ client: client.trim(), type, price: Math.round(p) });
-      setClient(""); setPrice(""); setType("website"); }
-    catch (e) { setErr("Speichern fehlgeschlagen. " + e.message); }
-    finally { setBusy(false); }
+    try { await addSale({client:client.trim(),type,price:Math.round(p)}); setClient(""); setPrice(""); setType("website"); }
+    catch(e){ setErr("Speichern fehlgeschlagen."); } finally { setBusy(false); }
   };
-
   return (
-    <div className="card card-pad" style={{position:"sticky", top:84}}>
+    <div className="card card-pad" style={{position:"sticky",top:84}}>
       <div className="eyebrow">Verkauf eintragen</div>
       <div className="field"><label>Kunde</label>
         <input value={client} placeholder="z. B. Pizzeria Da Enzo" onChange={e=>setClient(e.target.value)} /></div>
       <div className="field"><label>Art des Verkaufs</label>
         <select value={type} onChange={e=>setType(e.target.value)}>
-          {TYPES.map(t => <option key={t.id} value={t.id}>{t.label} ({t.rate})</option>)}
-        </select></div>
+          {TYPES.map(t=><option key={t.id} value={t.id}>{t.label} ({t.rate})</option>)}</select></div>
       <div className="field"><label>Verkaufspreis (netto)</label>
         <input value={price} inputMode="decimal" placeholder="z. B. 700"
           onChange={e=>setPrice(e.target.value)} onKeyDown={e=>e.key==="Enter"&&submit()} /></div>
       {err && <div className="err">{err}</div>}
-      <button className="btn" style={{width:"100%", justifyContent:"center", marginTop:6}} onClick={submit} disabled={busy}>
-        {busy ? "Speichert…" : "Eintragen"}</button>
-      <p style={{fontSize:"12px", color:"var(--muted)", marginTop:12, lineHeight:1.5}}>
-        Deine Provision erscheint, sobald der Abschluss bestätigt wurde.</p>
+      <button className="btn" style={{width:"100%",justifyContent:"center",marginTop:6}} onClick={submit} disabled={busy}>{busy?"Speichert…":"Eintragen"}</button>
+      <p style={{fontSize:"12px",color:"var(--muted)",marginTop:12,lineHeight:1.5}}>Deine Provision erscheint, sobald der Abschluss bestätigt wurde.</p>
     </div>
   );
 }
 
-/* ---------- Affiliate dashboard ---------- */
 function AffiliateDashboard({ user, data, addSale, setStatus, removeSale }) {
-  const mine = (data.mine || []).slice().sort((a,b) => b.createdAt - a.createdAt);
-  const confirmed = mine.filter(s => s.status === "confirmed");
-  const revenue = confirmed.reduce((s,x) => s + x.price, 0);
-  const commission = confirmed.reduce((s,x) => s + commissionFor(x), 0);
-  const pending = mine.filter(s => s.status !== "confirmed").length;
-
+  const mine = (data.mine||[]).slice().sort((a,b)=>b.createdAt-a.createdAt);
+  const confirmed = mine.filter(s=>s.status==="confirmed");
+  const revenue = confirmed.reduce((s,x)=>s+x.price,0);
+  const commission = confirmed.reduce((s,x)=>s+commissionFor(x),0);
+  const pending = mine.filter(s=>s.status!=="confirmed").length;
   return (
     <div className="page">
-      <div className="section-title">
-        <h2 className="serif">Willkommen, {user.user_metadata?.full_name || user.email}.</h2>
-      </div>
+      <div className="section-title"><h2 className="serif">Willkommen, {user.user_metadata?.full_name || user.email}.</h2></div>
       <div className="stat-grid">
-        <div className="stat"><div className="lab">Bestätigter Umsatz</div><div className="num blue">{fmtEur(revenue)}</div>
-          <div className="foot">{confirmed.length} bestätigte Abschlüsse</div></div>
-        <div className="stat"><div className="lab">Deine Provision</div><div className="num green">{fmtEur(commission)}</div>
-          <div className="foot">freigegeben</div></div>
-        <div className="stat"><div className="lab">In Bearbeitung</div><div className="num amber">{pending}</div>
-          <div className="foot">offen oder wartet auf Bestätigung</div></div>
+        <div className="stat"><div className="lab">Bestätigter Umsatz</div><div className="num blue">{fmtEur(revenue)}</div><div className="foot">{confirmed.length} bestätigte Abschlüsse</div></div>
+        <div className="stat"><div className="lab">Deine Provision</div><div className="num green">{fmtEur(commission)}</div><div className="foot">freigegeben</div></div>
+        <div className="stat"><div className="lab">In Bearbeitung</div><div className="num amber">{pending}</div><div className="foot">offen oder wartet auf Bestätigung</div></div>
       </div>
       <div className="grid-2" style={{marginTop:24}}>
         <SaleForm addSale={addSale} />
@@ -403,13 +624,8 @@ function AffiliateDashboard({ user, data, addSale, setStatus, removeSale }) {
           <div className="card" style={{marginBottom:20}}>
             <div className="card-head"><h3>Meine Verkäufe</h3><span className="hint">{mine.length} Einträge</span></div>
             <div className="card-pad">
-              {mine.length === 0 ? (
-                <div className="empty"><div className="big serif">Noch keine Verkäufe</div>
-                  <p>Trage links deinen ersten Abschluss ein.</p></div>
-              ) : mine.map(s => (
-                <SaleCard key={s.id} sale={s} view="affiliate"
-                  onDone={() => setStatus(s.id, "done")} onRemove={() => removeSale(s.id)} />
-              ))}
+              {mine.length===0 ? (<div className="empty"><div className="big serif">Noch keine Verkäufe</div><p>Trage links deinen ersten Abschluss ein.</p></div>)
+                : mine.map(s => <SaleCard key={s.id} sale={s} view="affiliate" onDone={()=>setStatus(s.id,"done")} onRemove={()=>removeSale(s.id)} />)}
             </div>
           </div>
           <Leaderboard confirmed={data.board} />
@@ -419,54 +635,38 @@ function AffiliateDashboard({ user, data, addSale, setStatus, removeSale }) {
   );
 }
 
-/* ---------- Admin dashboard ---------- */
 function AdminDashboard({ data, setStatus, removeSale }) {
-  const [filter, setFilter] = useState("all");
+  const [filter,setFilter]=useState("all");
   const sales = data.sales || [];
-  const confirmed = sales.filter(s => s.status === "confirmed");
-  const totalRevenue = confirmed.reduce((s,x) => s + x.price, 0);
-  const totalCommission = confirmed.reduce((s,x) => s + commissionFor(x), 0);
-  const awaiting = sales.filter(s => s.status === "done").length;
-
-  const counts = { all:sales.length, done:awaiting,
-    open:sales.filter(s=>s.status==="open").length, confirmed:confirmed.length };
+  const confirmed = sales.filter(s=>s.status==="confirmed");
+  const totalRevenue = confirmed.reduce((s,x)=>s+x.price,0);
+  const totalCommission = confirmed.reduce((s,x)=>s+commissionFor(x),0);
+  const awaiting = sales.filter(s=>s.status==="done").length;
+  const counts = { all:sales.length, done:awaiting, open:sales.filter(s=>s.status==="open").length, confirmed:confirmed.length };
   const order = { done:0, open:1, confirmed:2 };
-  const filtered = sales.filter(s => filter==="all" ? true : s.status===filter)
-    .sort((a,b) => order[a.status]!==order[b.status] ? order[a.status]-order[b.status] : b.createdAt-a.createdAt);
-
+  const filtered = sales.filter(s=>filter==="all"?true:s.status===filter)
+    .sort((a,b)=>order[a.status]!==order[b.status]?order[a.status]-order[b.status]:b.createdAt-a.createdAt);
   return (
     <div className="page">
-      <div className="section-title"><h2 className="serif">Admin · Übersicht</h2>
-        <span className="meta">Alle Verkäufe des Teams</span></div>
+      <div className="section-title"><h2 className="serif">Admin · Übersicht</h2><span className="meta">Alle Verkäufe des Teams</span></div>
       <div className="stat-grid">
-        <div className="stat"><div className="lab">Bestätigter Umsatz</div><div className="num blue">{fmtEur(totalRevenue)}</div>
-          <div className="foot">{confirmed.length} Abschlüsse</div></div>
-        <div className="stat"><div className="lab">Provision (Auszahlung)</div><div className="num green">{fmtEur(totalCommission)}</div>
-          <div className="foot">freigegeben ans Team</div></div>
-        <div className="stat"><div className="lab">Wartet auf Bestätigung</div><div className="num amber">{awaiting}</div>
-          <div className="foot">abgeschlossen, ungeprüft</div></div>
-        <div className="stat"><div className="lab">Einträge gesamt</div><div className="num">{sales.length}</div>
-          <div className="foot">alle Status</div></div>
+        <div className="stat"><div className="lab">Bestätigter Umsatz</div><div className="num blue">{fmtEur(totalRevenue)}</div><div className="foot">{confirmed.length} Abschlüsse</div></div>
+        <div className="stat"><div className="lab">Provision (Auszahlung)</div><div className="num green">{fmtEur(totalCommission)}</div><div className="foot">freigegeben ans Team</div></div>
+        <div className="stat"><div className="lab">Wartet auf Bestätigung</div><div className="num amber">{awaiting}</div><div className="foot">abgeschlossen, ungeprüft</div></div>
+        <div className="stat"><div className="lab">Einträge gesamt</div><div className="num">{sales.length}</div><div className="foot">alle Status</div></div>
       </div>
       <div className="grid-2" style={{marginTop:24}}>
         <Leaderboard confirmed={confirmed} />
         <div className="card">
           <div className="card-head"><h3>Verkäufe verwalten</h3>
             <div className="filters">
-              {[["all","Alle"],["done","Zu bestätigen"],["open","Offen"],["confirmed","Bestätigt"]].map(([k,l]) => (
-                <button key={k} className={"chip"+(filter===k?" on":"")} onClick={()=>setFilter(k)}>{l} · {counts[k]}</button>
-              ))}
+              {[["all","Alle"],["done","Zu bestätigen"],["open","Offen"],["confirmed","Bestätigt"]].map(([k,l])=>(
+                <button key={k} className={"chip"+(filter===k?" on":"")} onClick={()=>setFilter(k)}>{l} · {counts[k]}</button>))}
             </div>
           </div>
           <div className="card-pad">
-            {filtered.length === 0 ? (
-              <div className="empty"><div className="big serif">Nichts hier</div>
-                <p>{sales.length===0 ? "Sobald das Team Verkäufe einträgt, erscheinen sie hier." : "Kein Eintrag mit diesem Status."}</p></div>
-            ) : filtered.map(s => (
-              <SaleCard key={s.id} sale={s} view="admin"
-                onDone={() => setStatus(s.id,"done")} onConfirm={() => setStatus(s.id,"confirmed")}
-                onUnconfirm={() => setStatus(s.id,"done")} onRemove={() => removeSale(s.id)} />
-            ))}
+            {filtered.length===0 ? (<div className="empty"><div className="big serif">Nichts hier</div><p>{sales.length===0?"Sobald das Team Verkäufe einträgt, erscheinen sie hier.":"Kein Eintrag mit diesem Status."}</p></div>)
+              : filtered.map(s => <SaleCard key={s.id} sale={s} view="admin" onDone={()=>setStatus(s.id,"done")} onConfirm={()=>setStatus(s.id,"confirmed")} onUnconfirm={()=>setStatus(s.id,"done")} onRemove={()=>removeSale(s.id)} />)}
           </div>
         </div>
       </div>
@@ -474,50 +674,51 @@ function AdminDashboard({ data, setStatus, removeSale }) {
   );
 }
 
-/* ---------- App ---------- */
+/* ============================================================ */
 function App() {
-  const [ready, setReady] = useState(false);
-  const [user, setUser] = useState(null);
-  const [data, setData] = useState(null);
-  const [role, setRole] = useState(null);
-  const [err, setErr] = useState("");
+  const [ready,setReady]=useState(false);
+  const [user,setUser]=useState(null);
+  const [data,setData]=useState(null);
+  const [role,setRole]=useState(null);
+  const [err,setErr]=useState("");
+  const [tab,setTab]=useState("karte");
 
   const refresh = useCallback(async () => {
-    try { setErr(""); const j = await apiGet(); setRole(j.role); setData(j); }
-    catch (e) { setErr("Daten konnten nicht geladen werden (" + e.message + ")."); }
+    try { setErr(""); const j = await apiGet(SALES_API); setRole(j.role); setData(j); }
+    catch(e){ setErr("Verkaufsdaten konnten nicht geladen werden ("+e.message+")."); }
   }, []);
 
   useEffect(() => {
     const ni = window.netlifyIdentity;
-    if (!ni) { setErr("Login-System nicht geladen."); setReady(true); return; }
-    ni.on("init", u => { setUser(u); setReady(true); if (u) refresh(); });
+    if(!ni){ setErr("Login-System nicht geladen."); setReady(true); return; }
+    ni.on("init", u => { setUser(u); setReady(true); if(u) refresh(); });
     ni.on("login", u => { setUser(u); ni.close(); refresh(); });
     ni.on("logout", () => { setUser(null); setData(null); setRole(null); });
     ni.init();
   }, [refresh]);
 
-  const addSale    = async (sale) => { await apiSend("POST", sale); refresh(); };
-  const setStatus  = async (id, status) => { await apiSend("PATCH", { id, status }); refresh(); };
-  const removeSale = async (id) => { await apiSend("DELETE", null, "id=" + encodeURIComponent(id)); refresh(); };
+  const addSale=async(s)=>{ await apiSend(SALES_API,"POST",s); refresh(); };
+  const setStatus=async(id,status)=>{ await apiSend(SALES_API,"PATCH",{id,status}); refresh(); };
+  const removeSale=async(id)=>{ await apiSend(SALES_API,"DELETE",null,"id="+encodeURIComponent(id)); refresh(); };
 
   let body;
-  if (!ready) {
-    body = <div className="center-state"><div><div className="spinner"></div>Lädt…</div></div>;
-  } else if (!user) {
-    body = <Landing />;
-  } else if (!data) {
-    body = <div className="center-state"><div>
-      <div className="spinner"></div>{err ? <div style={{color:"var(--red)", fontSize:14}}>{err}</div> : "Deine Daten werden geladen…"}
-    </div></div>;
-  } else {
-    body = <div className="page" style={{paddingTop:0, paddingBottom:0}}>
-      {err && <div className="banner" style={{marginTop:20}}>{err}</div>}
-    </div>;
+  if(!ready){ body=<div className="center-state"><div><div className="spinner"></div>Lädt…</div></div>; }
+  else if(!user){ body=<Landing />; }
+  else if(!data){ body=<div className="center-state"><div><div className="spinner"></div>{err?<div style={{color:"var(--red)",fontSize:14}}>{err}</div>:"Deine Daten werden geladen…"}</div></div>; }
+  else {
     body = <>
-      {err && <div className="page" style={{paddingBottom:0}}><div className="banner">{err}</div></div>}
-      {role === "admin"
-        ? <AdminDashboard data={data} setStatus={setStatus} removeSale={removeSale} />
-        : <AffiliateDashboard user={user} data={data} addSale={addSale} setStatus={setStatus} removeSale={removeSale} />}
+      <div className="page" style={{paddingTop:16,paddingBottom:0}}>
+        {err && <div className="banner">{err}</div>}
+        <div className="tabs">
+          <button className={"tab"+(tab==="karte"?" on":"")} onClick={()=>setTab("karte")}>Karte</button>
+          <button className={"tab"+(tab==="provisionen"?" on":"")} onClick={()=>setTab("provisionen")}>Provisionen</button>
+        </div>
+      </div>
+      {tab==="karte"
+        ? <MapLeads myId={user.id} isAdmin={role==="admin"} />
+        : (role==="admin"
+            ? <AdminDashboard data={data} setStatus={setStatus} removeSale={removeSale} />
+            : <AffiliateDashboard user={user} data={data} addSale={addSale} setStatus={setStatus} removeSale={removeSale} />)}
     </>;
   }
 
