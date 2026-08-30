@@ -187,6 +187,8 @@
   .mini label { font-size:11px; font-weight:600; color:var(--muted); text-transform:uppercase; letter-spacing:0.04em; }
   .mini select { border:1px solid var(--line-2); border-radius:8px; padding:7px 9px; font-size:13px; background:#fff; color:var(--ink); }
   .lead-controls .spacer { flex:1; }
+  .lead-controls.locked { color:var(--muted); font-size:12.5px; padding-top:13px; }
+  .owner-tag { font-size:11.5px; color:var(--muted); }
 
   .center-state { min-height:60vh; display:grid; place-items:center; text-align:center; padding:40px 20px; }
   .spinner { width:34px; height:34px; border-radius:50%; border:3px solid var(--line-2);
@@ -395,18 +397,30 @@ function MapLeads({ myId, isAdmin }) {
 
   const selectBusiness = async () => {
     if (!selected) return;
-    try { const r = await apiSend(LEADS_API, "POST", selected);
+    const payload = selected;
+    setSelected(null); setQ("");
+    try { const r = await apiSend(LEADS_API, "POST", payload);
       flash(r.duplicate ? "info" : "ok", r.duplicate ? "War schon in der Liste." : "Unternehmen uebernommen.");
-      setSelected(null); setQ(""); loadLeads();
+      loadLeads();
     } catch(e){ flash("err","Konnte nicht uebernehmen."); }
   };
   const patchLead = async (id, changes) => {
-    try { await apiSend(LEADS_API, "PATCH", { id, ...changes }); loadLeads(); }
-    catch(e){ flash("err", e.message || "Fehler."); }
+    setLeads(prev => prev.map(l => {
+      if (l.id !== id) return l;
+      const n = { ...l };
+      if (changes.status !== undefined) n.status = changes.status;
+      if (changes.website !== undefined) n.website = changes.website;
+      if (changes.reserve === true) n.reservedBy = { id: myId, name: "Du" };
+      if (changes.reserve === false) n.reservedBy = null;
+      return n;
+    }));
+    try { await apiSend(LEADS_API, "PATCH", { id, ...changes }); }
+    catch(e){ flash("err", e.message || "Fehler."); loadLeads(); }
   };
   const removeLead = async (id) => {
-    try { await apiSend(LEADS_API, "DELETE", null, "id="+encodeURIComponent(id)); loadLeads(); }
-    catch(e){ flash("err", e.message || "Loeschen nicht erlaubt."); }
+    setLeads(prev => prev.filter(l => l.id !== id));
+    try { await apiSend(LEADS_API, "DELETE", null, "id="+encodeURIComponent(id)); }
+    catch(e){ flash("err", e.message || "Loeschen nicht erlaubt."); loadLeads(); }
   };
 
   const sorted = leads.slice().sort((a,b) => b.updatedAt - a.updatedAt);
@@ -435,7 +449,7 @@ function MapLeads({ myId, isAdmin }) {
               {suggestions.length > 0 && (
                 <div className="suggestions">
                   {suggestions.map((f,i) => (
-                    <div key={(f.properties&&f.properties.place_id)||i} className="suggestion" onClick={() => pick(f)}>
+                    <div key={(f.properties&&f.properties.place_id)||i} className="suggestion" onMouseDown={(e) => { e.preventDefault(); pick(f); }}>
                       <div className="s-name">{(f.properties&&(f.properties.name||f.properties.address_line1))||f.properties.formatted}</div>
                       <div className="s-addr">{f.properties&&f.properties.formatted}</div>
                     </div>
@@ -483,8 +497,8 @@ function MapLeads({ myId, isAdmin }) {
 function LeadCard({ lead, myId, isAdmin, onStatus, onWebsite, onReserve, onFree, onRemove }) {
   const reserved = lead.reservedBy;
   const mine = reserved && reserved.id === myId;
-  const canFree = mine || isAdmin;
-  const canDelete = isAdmin || (lead.createdBy && lead.createdBy.id === myId);
+  const owner = lead.createdBy || {};
+  const canEdit = isAdmin || owner.id === myId;
   return (
     <div className="lead">
       <div className="lead-top">
@@ -497,21 +511,26 @@ function LeadCard({ lead, myId, isAdmin, onStatus, onWebsite, onReserve, onFree,
       <div className="lead-tags">
         <span className="badge w">Website: {WEBSITE_LABEL[lead.website]}</span>
         {reserved && <span className={"resv" + (mine?" mine":"")}>{mine ? "Von dir reserviert" : "Reserviert · " + reserved.name}</span>}
+        {owner.name && <span className="owner-tag">von {owner.name}</span>}
       </div>
-      <div className="lead-controls">
-        <div className="mini"><label>Status</label>
-          <select value={lead.status} onChange={e => onStatus(e.target.value)}>
-            {LEAD_STATUS.map(s => <option key={s.id} value={s.id}>{s.label}</option>)}
-          </select></div>
-        <div className="mini"><label>Website-Interesse</label>
-          <select value={lead.website} onChange={e => onWebsite(e.target.value)}>
-            {WEBSITE_OPTS.map(s => <option key={s.id} value={s.id}>{s.label}</option>)}
-          </select></div>
-        <div className="spacer"></div>
-        {!reserved && <button className="btn sm" onClick={onReserve}>Reservieren</button>}
-        {reserved && canFree && <button className="btn line sm" onClick={onFree}>Freigeben</button>}
-        {canDelete && <button className="btn danger sm" onClick={onRemove}>Löschen</button>}
-      </div>
+      {canEdit ? (
+        <div className="lead-controls">
+          <div className="mini"><label>Status</label>
+            <select value={lead.status} onChange={e => onStatus(e.target.value)}>
+              {LEAD_STATUS.map(s => <option key={s.id} value={s.id}>{s.label}</option>)}
+            </select></div>
+          <div className="mini"><label>Website-Interesse</label>
+            <select value={lead.website} onChange={e => onWebsite(e.target.value)}>
+              {WEBSITE_OPTS.map(s => <option key={s.id} value={s.id}>{s.label}</option>)}
+            </select></div>
+          <div className="spacer"></div>
+          {!reserved && <button className="btn sm" onClick={onReserve}>Reservieren</button>}
+          {reserved && <button className="btn line sm" onClick={onFree}>Freigeben</button>}
+          <button className="btn danger sm" onClick={onRemove}>Löschen</button>
+        </div>
+      ) : (
+        <div className="lead-controls locked">Nur {owner.name || "der Ersteller"} kann diesen Lead bearbeiten.</div>
+      )}
     </div>
   );
 }
