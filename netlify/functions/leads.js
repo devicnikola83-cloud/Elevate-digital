@@ -63,11 +63,13 @@ export const handler = async (event, context) => {
     return res({ ok: true });
   }
 
-  /* ---------- VERWALTEN: Status / Website / Reservierung ---------- */
+  /* ---------- VERWALTEN: nur der Ersteller (oder Admin) ---------- */
   if (method === "PATCH") {
     const b = JSON.parse(event.body || "{}");
     const l = leads.find((x) => x.id === b.id);
     if (!l) return res({ error: "Nicht gefunden" }, 404);
+    if (!isAdmin && l.createdBy.id !== me.id)
+      return res({ error: "Nur der Ersteller darf diesen Lead ändern" }, 403);
 
     if (b.status !== undefined) {
       if (!STATUSES.includes(b.status)) return res({ error: "Status ungültig" }, 400);
@@ -77,18 +79,8 @@ export const handler = async (event, context) => {
       if (!WEBSITE.includes(b.website)) return res({ error: "Wert ungültig" }, 400);
       l.website = b.website;
     }
-    if (b.reserve === true) {
-      // Reservieren: nur wenn frei (oder eigene / Admin)
-      if (l.reservedBy && l.reservedBy.id !== me.id && !isAdmin)
-        return res({ error: "Bereits von " + l.reservedBy.name + " reserviert" }, 403);
-      l.reservedBy = me;
-    }
-    if (b.reserve === false) {
-      // Freigeben: nur eigene Reservierung (oder Admin)
-      if (l.reservedBy && l.reservedBy.id !== me.id && !isAdmin)
-        return res({ error: "Nicht erlaubt" }, 403);
-      l.reservedBy = null;
-    }
+    if (b.reserve === true) l.reservedBy = me;
+    if (b.reserve === false) l.reservedBy = null;
     l.updatedAt = Date.now();
     await persist();
     return res({ ok: true });
