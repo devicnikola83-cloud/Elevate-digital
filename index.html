@@ -365,15 +365,31 @@ function MapLeads({ myId, isAdmin }) {
   const [noKey, setNoKey] = useState(false);
   const [meId, setMeId] = useState(myId);
   const [reserveDays, setReserveDays] = useState(3);
+  const suppressUntil = useRef(0);
+  const recentAdd = useRef({});
+  const recentDel = useRef({});
+  const touch = () => { suppressUntil.current = Date.now() + 5000; };
 
   const flash = (type, text) => pushToast(text, type === "err" ? "err" : type === "info" ? "info" : "ok");
 
   const loadLeads = useCallback(async () => {
-    try { const j = await apiGet(LEADS_API); setLeads(j.leads || []); if (j.myId) setMeId(j.myId); if (j.reserveDays) setReserveDays(j.reserveDays); }
-    catch(e){ flash("err","Leads konnten nicht geladen werden."); }
+    try {
+      const j = await apiGet(LEADS_API);
+      if (j.myId) setMeId(j.myId);
+      if (j.reserveDays) setReserveDays(j.reserveDays);
+      const now = Date.now();
+      // kürzlich gelöschte noch kurz ausblenden (Server-Verzögerung)
+      const server = (j.leads || []).filter(l => !(recentDel.current[l.id] && now - recentDel.current[l.id] < 15000));
+      const ids = new Set(server.map(l => l.id));
+      setLeads(prev => {
+        // kürzlich hinzugefügte behalten, bis der Server sie listet
+        const keep = prev.filter(l => !ids.has(l.id) && recentAdd.current[l.id] && now - recentAdd.current[l.id] < 15000);
+        return [...keep, ...server];
+      });
+    } catch(e){ flash("err","Leads konnten nicht geladen werden."); }
   }, []);
   useEffect(() => { loadLeads(); }, [loadLeads]);
-  useEffect(() => { const iv = setInterval(() => loadLeads(), 30000); return () => clearInterval(iv); }, [loadLeads]);
+  useEffect(() => { const iv = setInterval(() => { if (Date.now() >= suppressUntil.current) loadLeads(); }, 20000); return () => clearInterval(iv); }, [loadLeads]);
 
   useEffect(() => {
     if (!GEOAPIFY_KEY || GEOAPIFY_KEY.indexOf("HIER_DEIN") === 0) { setNoKey(true); return; }
@@ -425,13 +441,14 @@ function MapLeads({ myId, isAdmin }) {
   const selectBusiness = async () => {
     if (!selected) return;
     const payload = selected;
-    setSelected(null); setQ("");
+    setSelected(null); setQ(""); touch();
     try { const r = await apiSend(LEADS_API, "POST", payload);
-      if (r && r.lead) setLeads(prev => [r.lead, ...prev.filter(l => l.id !== r.lead.id)]);
+      if (r && r.lead) { recentAdd.current[r.lead.id] = Date.now(); setLeads(prev => [r.lead, ...prev.filter(l => l.id !== r.lead.id)]); }
       pushToast("Unternehmen hinzugefügt ✓");
     } catch(e){ flash("err","Konnte nicht übernehmen."); }
   };
   const patchLead = async (id, changes) => {
+    touch();
     setLeads(prev => prev.map(l => {
       if (l.id !== id) return l;
       const n = { ...l };
@@ -445,6 +462,7 @@ function MapLeads({ myId, isAdmin }) {
     catch(e){ flash("err", e.message || "Fehler."); loadLeads(); }
   };
   const removeLead = async (id) => {
+    touch(); recentDel.current[id] = Date.now();
     setLeads(prev => prev.filter(l => l.id !== id));
     try { await apiSend(LEADS_API, "DELETE", null, "id="+encodeURIComponent(id)); pushToast("Gelöscht"); }
     catch(e){ flash("err", e.message || "Loeschen nicht erlaubt."); loadLeads(); }
