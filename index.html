@@ -423,9 +423,9 @@ function MapLeads({ myId, isAdmin }) {
     if (!selected) return;
     const payload = selected;
     setSelected(null); setQ("");
-    try { await apiSend(LEADS_API, "POST", payload);
+    try { const r = await apiSend(LEADS_API, "POST", payload);
+      if (r && r.lead) setLeads(prev => [r.lead, ...prev.filter(l => l.id !== r.lead.id)]);
       pushToast("Unternehmen hinzugefügt ✓");
-      loadLeads();
     } catch(e){ flash("err","Konnte nicht übernehmen."); }
   };
   const patchLead = async (id, changes) => {
@@ -717,27 +717,39 @@ function AdminDashboard({ data, setStatus, removeSale }) {
 
 /* ============================================================ */
 function Capacity({ cap, loadCap, isAdmin, myId }) {
+  const [localCap, setLocalCap] = useState(cap || null);
+  const [loadErr, setLoadErr] = useState(false);
   const [wNote, setWNote] = useState("");
   const [nfcNote, setNfcNote] = useState("");
   const [given, setGiven] = useState({});
   const [myLeft, setMyLeft] = useState("");
 
+  const reload = useCallback(async () => {
+    setLoadErr(false);
+    try { const j = await apiGet(CAP_API); setLocalCap(j.data); }
+    catch(e){ setLoadErr(true); }
+  }, []);
+  useEffect(() => { reload(); }, [reload]);
+
+  const c = localCap;
   useEffect(() => {
-    if (!cap) return;
-    setWNote(cap.websiteNote || "");
-    setNfcNote(cap.nfcNote || "");
-    const g = {}; Object.keys(cap.tags||{}).forEach(id => g[id] = String((cap.tags[id].given)||0));
+    if (!c) return;
+    setWNote(c.websiteNote || "");
+    setNfcNote(c.nfcNote || "");
+    const g = {}; Object.keys(c.tags||{}).forEach(id => g[id] = String((c.tags[id].given)||0));
     setGiven(g);
-    if (cap.tags && cap.tags[myId]) setMyLeft(String(cap.tags[myId].left||0));
-  }, [cap, myId]);
+    if (c.tags && c.tags[myId]) setMyLeft(String(c.tags[myId].left||0));
+  }, [c, myId]);
 
-  useEffect(() => { loadCap(); }, [loadCap]);
+  const send = async (payload) => {
+    try { const r = await apiSend(CAP_API, "PATCH", payload); if (r && r.data) setLocalCap(r.data); pushToast("Gespeichert ✓"); loadCap(); }
+    catch(e){ pushToast("Fehler beim Speichern","err"); }
+  };
 
-  const send = async (payload) => { try { await apiSend(CAP_API, "PATCH", payload); pushToast("Gespeichert ✓"); loadCap(); } catch(e){ pushToast("Fehler beim Speichern","err"); } };
+  if (loadErr && !c) return <div className="page"><div className="center-state"><div><div style={{marginBottom:14, color:"var(--ink-2)"}}>Kapazität konnte nicht geladen werden.</div><button className="btn" onClick={reload}>Erneut versuchen</button></div></div></div>;
+  if (!c) return <div className="page"><div className="center-state"><div><div className="spinner"></div>Lädt…</div></div></div>;
 
-  if (!cap) return <div className="page"><div className="center-state"><div><div className="spinner"></div>Lädt…</div></div></div>;
-
-  const tags = cap.tags || {};
+  const tags = c.tags || {};
   const mine = tags[myId] || { given:0, left:0, needMore:false };
 
   return (
@@ -748,14 +760,14 @@ function Capacity({ cap, loadCap, isAdmin, myId }) {
           <div className="card card-pad">
             <div className="eyebrow">Website-Verkauf</div>
             <div style={{display:"flex", alignItems:"center", gap:14, flexWrap:"wrap"}}>
-              <span className={"badge " + (cap.websitePaused ? "st-nicht_interessiert" : "st-verkauft")}>{cap.websitePaused ? "Pausiert" : "Aktiv"}</span>
-              <button className={"btn sm " + (cap.websitePaused ? "ok" : "danger")}
-                onClick={() => send({ type:"website", paused: !cap.websitePaused, note: wNote })}>
-                {cap.websitePaused ? "Wieder aktivieren" : "Verkauf pausieren"}</button>
+              <span className={"badge " + (c.websitePaused ? "st-nicht_interessiert" : "st-verkauft")}>{c.websitePaused ? "Pausiert" : "Aktiv"}</span>
+              <button className={"btn sm " + (c.websitePaused ? "ok" : "danger")}
+                onClick={() => send({ type:"website", paused: !c.websitePaused, note: wNote })}>
+                {c.websitePaused ? "Wieder aktivieren" : "Verkauf pausieren"}</button>
             </div>
             <div className="field" style={{marginTop:14}}><label>Hinweis (z. B. „keine Kapazität bis 15.09.")</label>
               <input value={wNote} onChange={e=>setWNote(e.target.value)} placeholder="Grund / bis wann" /></div>
-            <button className="btn sm line" onClick={()=>send({type:"website", paused:cap.websitePaused, note:wNote})}>Hinweis speichern</button>
+            <button className="btn sm line" onClick={()=>send({type:"website", paused:c.websitePaused, note:wNote})}>Hinweis speichern</button>
           </div>
 
           <div className="card card-pad">
@@ -793,9 +805,9 @@ function Capacity({ cap, loadCap, isAdmin, myId }) {
           <div className="card card-pad">
             <div className="eyebrow">Aktueller Status</div>
             <div style={{display:"flex", flexDirection:"column", gap:10}}>
-              <div>Website-Verkauf: <span className={"badge " + (cap.websitePaused ? "st-nicht_interessiert" : "st-verkauft")}>{cap.websitePaused ? "Pausiert" : "Aktiv"}</span>
-                {cap.websitePaused && cap.websiteNote ? <span style={{color:"var(--muted)", fontSize:13}}> — {cap.websiteNote}</span> : null}</div>
-              {cap.nfcNote ? <div style={{fontSize:14}}>NFC-Nachschub: <b>{cap.nfcNote}</b></div> : null}
+              <div>Website-Verkauf: <span className={"badge " + (c.websitePaused ? "st-nicht_interessiert" : "st-verkauft")}>{c.websitePaused ? "Pausiert" : "Aktiv"}</span>
+                {c.websitePaused && c.websiteNote ? <span style={{color:"var(--muted)", fontSize:13}}> — {c.websiteNote}</span> : null}</div>
+              {c.nfcNote ? <div style={{fontSize:14}}>NFC-Nachschub: <b>{c.nfcNote}</b></div> : null}
             </div>
           </div>
           <div className="card card-pad">
@@ -815,7 +827,6 @@ function Capacity({ cap, loadCap, isAdmin, myId }) {
     </div>
   );
 }
-
 function App() {
   const [ready,setReady]=useState(false);
   const [user,setUser]=useState(null);
