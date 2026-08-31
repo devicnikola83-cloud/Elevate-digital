@@ -363,14 +363,17 @@ function MapLeads({ myId, isAdmin }) {
   const [selected, setSelected] = useState(null);
   const [leads, setLeads] = useState([]);
   const [noKey, setNoKey] = useState(false);
+  const [meId, setMeId] = useState(myId);
+  const [reserveDays, setReserveDays] = useState(3);
 
   const flash = (type, text) => pushToast(text, type === "err" ? "err" : type === "info" ? "info" : "ok");
 
   const loadLeads = useCallback(async () => {
-    try { const j = await apiGet(LEADS_API); setLeads(j.leads || []); }
+    try { const j = await apiGet(LEADS_API); setLeads(j.leads || []); if (j.myId) setMeId(j.myId); if (j.reserveDays) setReserveDays(j.reserveDays); }
     catch(e){ flash("err","Leads konnten nicht geladen werden."); }
   }, []);
   useEffect(() => { loadLeads(); }, [loadLeads]);
+  useEffect(() => { const iv = setInterval(() => loadLeads(), 30000); return () => clearInterval(iv); }, [loadLeads]);
 
   useEffect(() => {
     if (!GEOAPIFY_KEY || GEOAPIFY_KEY.indexOf("HIER_DEIN") === 0) { setNoKey(true); return; }
@@ -434,11 +437,11 @@ function MapLeads({ myId, isAdmin }) {
       const n = { ...l };
       if (changes.status !== undefined) n.status = changes.status;
       if (changes.website !== undefined) n.website = changes.website;
-      if (changes.reserve === true) n.reservedBy = { id: myId, name: "Du" };
-      if (changes.reserve === false) n.reservedBy = null;
+      if (changes.reserve === true) { n.reservedBy = { id: meId, name: "Du" }; n.reservedAt = Date.now(); }
+      if (changes.reserve === false) { n.reservedBy = null; n.reservedAt = null; }
       return n;
     }));
-    try { await apiSend(LEADS_API, "PATCH", { id, ...changes }); pushToast("Gespeichert ✓"); }
+    try { const r = await apiSend(LEADS_API, "PATCH", { id, ...changes }); if (r && r.lead) setLeads(prev => prev.map(l => l.id === id ? r.lead : l)); pushToast("Gespeichert ✓"); }
     catch(e){ flash("err", e.message || "Fehler."); loadLeads(); }
   };
   const removeLead = async (id) => {
@@ -502,7 +505,7 @@ function MapLeads({ myId, isAdmin }) {
               <div className="empty"><div className="big serif">Noch keine Leads</div>
                 <p>Such links einen Laden und übernimm ihn.</p></div>
             ) : sorted.map(l => (
-              <LeadCard key={l.id} lead={l} myId={myId} isAdmin={isAdmin}
+              <LeadCard key={l.id} lead={l} myId={meId} reserveDays={reserveDays} isAdmin={isAdmin}
                 onStatus={v => patchLead(l.id,{status:v})}
                 onWebsite={v => patchLead(l.id,{website:v})}
                 onReserve={() => patchLead(l.id,{reserve:true})}
@@ -516,11 +519,13 @@ function MapLeads({ myId, isAdmin }) {
   );
 }
 
-function LeadCard({ lead, myId, isAdmin, onStatus, onWebsite, onReserve, onFree, onRemove }) {
+function LeadCard({ lead, myId, isAdmin, reserveDays, onStatus, onWebsite, onReserve, onFree, onRemove }) {
   const reserved = lead.reservedBy;
   const mine = reserved && reserved.id === myId;
   const owner = lead.createdBy || {};
   const canEdit = isAdmin || owner.id === myId;
+  const daysLeft = (reserved && lead.reservedAt) ? Math.max(0, Math.ceil((lead.reservedAt + (reserveDays||3)*86400000 - Date.now())/86400000)) : null;
+  const resvLabel = reserved ? ((mine ? "Von dir reserviert" : "Reserviert · " + reserved.name) + (daysLeft!=null ? " · noch " + daysLeft + (daysLeft===1?" Tag":" Tage") : "")) : "";
   return (
     <div className="lead">
       <div className="lead-top">
@@ -532,7 +537,7 @@ function LeadCard({ lead, myId, isAdmin, onStatus, onWebsite, onReserve, onFree,
       </div>
       <div className="lead-tags">
         <span className="badge w">Website: {WEBSITE_LABEL[lead.website]}</span>
-        {reserved && <span className={"resv" + (mine?" mine":"")}>{mine ? "Von dir reserviert" : "Reserviert · " + reserved.name}</span>}
+        {reserved && <span className={"resv" + (mine?" mine":"")}>{resvLabel}</span>}
         {owner.name && <span className="owner-tag">von {owner.name}</span>}
       </div>
       {canEdit ? (
@@ -616,15 +621,17 @@ function SaleCard({ sale, view, onDone, onConfirm, onUnconfirm, onRemove }) {
   );
 }
 
-function SaleForm({ addSale }) {
-  const [client,setClient]=useState(""); const [type,setType]=useState("website");
+function SaleForm({ addSale, websitePaused }) {
+  const [client,setClient]=useState(""); const [type,setType]=useState(websitePaused ? "nfc" : "website");
   const [price,setPrice]=useState(""); const [err,setErr]=useState(""); const [busy,setBusy]=useState(false);
+  useEffect(() => { if (websitePaused) setType("nfc"); }, [websitePaused]);
   const submit = async () => {
     const p = parseFloat(String(price).replace(",","."));
+    if(websitePaused && type!=="nfc") return setErr("Website-Verkauf ist gerade pausiert.");
     if(!client.trim()) return setErr("Bitte Kundennamen eintragen.");
     if(!p||p<=0) return setErr("Bitte einen gültigen Verkaufspreis eintragen.");
     setErr(""); setBusy(true);
-    try { await addSale({client:client.trim(),type,price:Math.round(p)}); setClient(""); setPrice(""); setType("website"); }
+    try { await addSale({client:client.trim(),type,price:Math.round(p)}); setClient(""); setPrice(""); setType(websitePaused ? "nfc" : "website"); }
     catch(e){ setErr("Speichern fehlgeschlagen."); } finally { setBusy(false); }
   };
   return (
@@ -634,7 +641,8 @@ function SaleForm({ addSale }) {
         <input value={client} placeholder="z. B. Pizzeria Da Enzo" onChange={e=>setClient(e.target.value)} /></div>
       <div className="field"><label>Art des Verkaufs</label>
         <select value={type} onChange={e=>setType(e.target.value)}>
-          {TYPES.map(t=><option key={t.id} value={t.id}>{t.label} ({t.rate})</option>)}</select></div>
+          {TYPES.map(t=><option key={t.id} value={t.id} disabled={websitePaused && t.id!=="nfc"}>{t.label} ({t.rate}){websitePaused && t.id!=="nfc" ? " — pausiert" : ""}</option>)}</select>
+        {websitePaused && <div style={{fontSize:12, color:"var(--amber)", marginTop:6}}>Website-Verkauf pausiert — aktuell nur NFC-Aufsteller wählbar.</div>}</div>
       <div className="field"><label>Verkaufspreis (netto)</label>
         <input value={price} inputMode="decimal" placeholder="z. B. 700"
           onChange={e=>setPrice(e.target.value)} onKeyDown={e=>e.key==="Enter"&&submit()} /></div>
@@ -645,7 +653,7 @@ function SaleForm({ addSale }) {
   );
 }
 
-function AffiliateDashboard({ user, data, addSale, setStatus, removeSale }) {
+function AffiliateDashboard({ user, data, addSale, setStatus, removeSale, websitePaused }) {
   const mine = (data.mine||[]).slice().sort((a,b)=>b.createdAt-a.createdAt);
   const confirmed = mine.filter(s=>s.status==="confirmed");
   const revenue = confirmed.reduce((s,x)=>s+x.price,0);
@@ -660,7 +668,7 @@ function AffiliateDashboard({ user, data, addSale, setStatus, removeSale }) {
         <div className="stat"><div className="lab">In Bearbeitung</div><div className="num amber">{pending}</div><div className="foot">offen oder wartet auf Bestätigung</div></div>
       </div>
       <div className="grid-2" style={{marginTop:24}}>
-        <SaleForm addSale={addSale} />
+        <SaleForm addSale={addSale} websitePaused={websitePaused} />
         <div>
           <div className="card" style={{marginBottom:20}}>
             <div className="card-head"><h3>Meine Verkäufe</h3><span className="hint">{mine.length} Einträge</span></div>
@@ -718,6 +726,7 @@ function AdminDashboard({ data, setStatus, removeSale }) {
 /* ============================================================ */
 function Capacity({ cap, loadCap, isAdmin, myId }) {
   const [localCap, setLocalCap] = useState(cap || null);
+  const [meId, setMeId] = useState(myId);
   const [loadErr, setLoadErr] = useState(false);
   const [wNote, setWNote] = useState("");
   const [nfcNote, setNfcNote] = useState("");
@@ -726,7 +735,7 @@ function Capacity({ cap, loadCap, isAdmin, myId }) {
 
   const reload = useCallback(async () => {
     setLoadErr(false);
-    try { const j = await apiGet(CAP_API); setLocalCap(j.data); }
+    try { const j = await apiGet(CAP_API); setLocalCap(j.data); if (j.myId) setMeId(j.myId); }
     catch(e){ setLoadErr(true); }
   }, []);
   useEffect(() => { reload(); }, [reload]);
@@ -738,19 +747,29 @@ function Capacity({ cap, loadCap, isAdmin, myId }) {
     setNfcNote(c.nfcNote || "");
     const g = {}; Object.keys(c.tags||{}).forEach(id => g[id] = String((c.tags[id].given)||0));
     setGiven(g);
-    if (c.tags && c.tags[myId]) setMyLeft(String(c.tags[myId].left||0));
-  }, [c, myId]);
+    if (c.tags && c.tags[meId]) setMyLeft(String(c.tags[meId].left||0));
+  }, [c, meId]);
 
   const send = async (payload) => {
+    // Optimistisch sofort anwenden (ein Klick reicht)
+    setLocalCap(prev => {
+      if (!prev) return prev;
+      const n = { ...prev, tags: { ...(prev.tags||{}) } };
+      if (payload.type === "website") { n.websitePaused = !!payload.paused; if (payload.note !== undefined) n.websiteNote = payload.note; }
+      else if (payload.type === "nfc") { n.nfcNote = payload.note || ""; }
+      else if (payload.type === "given") { n.tags[payload.userId] = { ...(n.tags[payload.userId]||{}), given: parseInt(payload.given,10)||0, name: payload.name || (n.tags[payload.userId]||{}).name }; }
+      else if (payload.type === "mytags") { const cur = n.tags[meId]||{}; n.tags[meId] = { ...cur, left: payload.left!==undefined ? (parseInt(payload.left,10)||0) : cur.left, needMore: payload.needMore!==undefined ? !!payload.needMore : cur.needMore }; }
+      return n;
+    });
     try { const r = await apiSend(CAP_API, "PATCH", payload); if (r && r.data) setLocalCap(r.data); pushToast("Gespeichert ✓"); loadCap(); }
-    catch(e){ pushToast("Fehler beim Speichern","err"); }
+    catch(e){ pushToast("Fehler beim Speichern","err"); reload(); }
   };
 
   if (loadErr && !c) return <div className="page"><div className="center-state"><div><div style={{marginBottom:14, color:"var(--ink-2)"}}>Kapazität konnte nicht geladen werden.</div><button className="btn" onClick={reload}>Erneut versuchen</button></div></div></div>;
   if (!c) return <div className="page"><div className="center-state"><div><div className="spinner"></div>Lädt…</div></div></div>;
 
   const tags = c.tags || {};
-  const mine = tags[myId] || { given:0, left:0, needMore:false };
+  const mine = tags[meId] || { given:0, left:0, needMore:false };
 
   return (
     <div className="page">
@@ -884,7 +903,7 @@ function App() {
         ? <Capacity cap={cap} loadCap={loadCap} isAdmin={role==="admin"} myId={user.id} />
         : (role==="admin"
             ? <AdminDashboard data={data} setStatus={setStatus} removeSale={removeSale} />
-            : <AffiliateDashboard user={user} data={data} addSale={addSale} setStatus={setStatus} removeSale={removeSale} />)}
+            : <AffiliateDashboard user={user} data={data} addSale={addSale} setStatus={setStatus} removeSale={removeSale} websitePaused={cap && cap.websitePaused} />)}
     </>;
   }
 
