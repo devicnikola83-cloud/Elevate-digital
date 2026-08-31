@@ -1,7 +1,7 @@
 import { connectLambda, getStore } from "@netlify/blobs";
 
-/* Kapazitäts-Einstellungen: Website-Verkauf pausieren, NFC-Nachschub-Hinweis,
-   und Tag-Zählung pro Person. Liegt als EIN JSON-Objekt unter "capacity". */
+/* Kapazität: Website-Verkauf pausieren, NFC-Nachschub-Hinweis, Tags pro Person.
+   Liegt als EIN JSON-Objekt unter "capacity". */
 const KEY = "capacity";
 const DEFAULT = { websitePaused: false, websiteNote: "", nfcNote: "", tags: {} };
 
@@ -24,7 +24,7 @@ export const handler = async (event, context) => {
     name: (user.user_metadata && user.user_metadata.full_name) || user.email,
   };
 
-  const store = getStore({ name: "elevate", consistency: "strong" });
+  const store = getStore("elevate");
   const data = (await store.get(KEY, { type: "json" })) || { ...DEFAULT };
   if (!data.tags) data.tags = {};
   const persist = () => store.setJSON(KEY, data);
@@ -32,7 +32,6 @@ export const handler = async (event, context) => {
 
   /* ---------- LESEN ---------- */
   if (method === "GET") {
-    // Affiliate trägt sich selbst in die Tag-Liste ein (damit Admin ihn sieht)
     if (!isAdmin) {
       const t = data.tags[me.id] || { given: 0, left: 0, needMore: false };
       t.name = me.name;
@@ -59,7 +58,6 @@ export const handler = async (event, context) => {
         data.tags[b.userId] = t;
       } else return res({ error: "Unbekannt" }, 400);
     } else {
-      // Affiliate darf nur seine EIGENEN Tag-Angaben ändern
       if (b.type !== "mytags") return res({ error: "Nicht erlaubt" }, 403);
       const t = data.tags[me.id] || { given: 0, left: 0, needMore: false };
       t.name = me.name;
@@ -68,7 +66,7 @@ export const handler = async (event, context) => {
       data.tags[me.id] = t;
     }
     await persist();
-    return res({ ok: true });
+    return res({ ok: true, data });
   }
 
   return res({ error: "Methode nicht erlaubt" }, 405);
