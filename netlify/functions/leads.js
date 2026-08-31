@@ -24,15 +24,15 @@ const newId = () =>
     : String(Date.now()) + Math.random().toString(16).slice(2);
 
 async function listLeads(store) {
-  const { blobs } = await store.list({ prefix: PREFIX });
-  const arr = await Promise.all(blobs.map((b) => store.get(b.key, { type: "json" })));
+  const { blobs } = await store.list({ prefix: PREFIX, consistency: "strong" });
+  const arr = await Promise.all(blobs.map((b) => store.get(b.key, { type: "json", consistency: "strong" })));
   return arr.filter(Boolean);
 }
 
 /* Einmalige Migration: alter Sammel-Datensatz -> Einzel-Datensätze */
 async function migrateIfNeeded(store) {
   let old = null;
-  try { old = await store.get(OLD_KEY, { type: "json" }); } catch (e) {}
+  try { old = await store.get(OLD_KEY, { type: "json", consistency: "strong" }); } catch (e) {}
   if (Array.isArray(old) && old.length) {
     await Promise.all(old.map((l) => (l && l.id ? store.setJSON(PREFIX + l.id, l) : null)));
   }
@@ -96,7 +96,7 @@ export const handler = async (event, context) => {
   /* ---------- ÄNDERN (nur Ersteller/Admin) ---------- */
   if (method === "PATCH") {
     const b = JSON.parse(event.body || "{}");
-    const l = await store.get(PREFIX + b.id, { type: "json" });
+    const l = await store.get(PREFIX + b.id, { type: "json", consistency: "strong" });
     if (!l) return res({ error: "Nicht gefunden" }, 404);
     if (!isAdmin && l.createdBy.id !== me.id)
       return res({ error: "Nur der Ersteller darf diesen Lead ändern" }, 403);
@@ -133,7 +133,7 @@ export const handler = async (event, context) => {
     let id = event.queryStringParameters && event.queryStringParameters.id;
     if (!id && event.body) { try { id = JSON.parse(event.body).id; } catch (e) {} }
     if (!id) return res({ error: "Keine ID" }, 400);
-    const l = await store.get(PREFIX + id, { type: "json" });
+    const l = await store.get(PREFIX + id, { type: "json", consistency: "strong" });
     if (l && !isAdmin && l.createdBy.id !== me.id)
       return res({ error: "Nur der Ersteller darf löschen" }, 403);
     await store.delete(PREFIX + id);
