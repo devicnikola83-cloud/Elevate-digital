@@ -196,6 +196,12 @@
   .banner { background:var(--red-bg); color:var(--red); border:1px solid #f0c9cf; border-radius:10px; padding:12px 14px; font-size:13px; }
   .banner.ok { background:var(--green-bg); color:var(--green); border-color:#bfe3cf; }
   .banner.info { background:var(--amber-bg); color:var(--amber); border-color:#ecd9ac; }
+  .toaster { position:fixed; top:16px; left:50%; transform:translateX(-50%); z-index:3000;
+    display:flex; flex-direction:column; gap:8px; align-items:center; width:calc(100% - 32px); max-width:420px; pointer-events:none; }
+  .toast { pointer-events:auto; background:var(--ink); color:#fff; font-size:14px; font-weight:600;
+    padding:12px 18px; border-radius:10px; box-shadow:0 12px 34px -8px rgba(15,26,58,.45); text-align:center; animation:toastIn .2s ease; }
+  .toast.ok { background:var(--green); } .toast.err { background:var(--red); } .toast.info { background:var(--royal); }
+  @keyframes toastIn { from { opacity:0; transform:translateY(-10px); } to { opacity:1; transform:translateY(0); } }
 
   footer.site { border-top:1px solid var(--line); background:#fff; }
   footer.site .in { max-width:1080px; margin:0 auto; padding:22px 20px; font-size:12.5px; color:var(--muted);
@@ -276,6 +282,25 @@ async function apiSend(url, method, body, qs) {
 }
 
 /* ============================================================ */
+const toastListeners = new Set();
+let toastSeq = 1;
+function pushToast(text, type = "ok") {
+  const t = { id: toastSeq++, text, type };
+  toastListeners.forEach(fn => fn(t));
+}
+function Toaster() {
+  const [items, setItems] = useState([]);
+  useEffect(() => {
+    const on = (t) => {
+      setItems(prev => [...prev, t]);
+      setTimeout(() => setItems(prev => prev.filter(x => x.id !== t.id)), 2600);
+    };
+    toastListeners.add(on);
+    return () => toastListeners.delete(on);
+  }, []);
+  return <div className="toaster">{items.map(t => <div key={t.id} className={"toast " + t.type}>{t.text}</div>)}</div>;
+}
+
 function Topbar({ user, role }) {
   return (
     <div className="topbar"><div className="topbar-in">
@@ -338,9 +363,8 @@ function MapLeads({ myId, isAdmin }) {
   const [selected, setSelected] = useState(null);
   const [leads, setLeads] = useState([]);
   const [noKey, setNoKey] = useState(false);
-  const [msg, setMsg] = useState(null);
 
-  const flash = (type, text) => { setMsg({type,text}); setTimeout(() => setMsg(null), 2800); };
+  const flash = (type, text) => pushToast(text, type === "err" ? "err" : type === "info" ? "info" : "ok");
 
   const loadLeads = useCallback(async () => {
     try { const j = await apiGet(LEADS_API); setLeads(j.leads || []); }
@@ -399,10 +423,10 @@ function MapLeads({ myId, isAdmin }) {
     if (!selected) return;
     const payload = selected;
     setSelected(null); setQ("");
-    try { const r = await apiSend(LEADS_API, "POST", payload);
-      flash(r.duplicate ? "info" : "ok", r.duplicate ? "War schon in der Liste." : "Unternehmen uebernommen.");
+    try { await apiSend(LEADS_API, "POST", payload);
+      pushToast("Unternehmen hinzugefügt ✓");
       loadLeads();
-    } catch(e){ flash("err","Konnte nicht uebernehmen."); }
+    } catch(e){ flash("err","Konnte nicht übernehmen."); }
   };
   const patchLead = async (id, changes) => {
     setLeads(prev => prev.map(l => {
@@ -414,12 +438,12 @@ function MapLeads({ myId, isAdmin }) {
       if (changes.reserve === false) n.reservedBy = null;
       return n;
     }));
-    try { await apiSend(LEADS_API, "PATCH", { id, ...changes }); }
+    try { await apiSend(LEADS_API, "PATCH", { id, ...changes }); pushToast("Gespeichert ✓"); }
     catch(e){ flash("err", e.message || "Fehler."); loadLeads(); }
   };
   const removeLead = async (id) => {
     setLeads(prev => prev.filter(l => l.id !== id));
-    try { await apiSend(LEADS_API, "DELETE", null, "id="+encodeURIComponent(id)); }
+    try { await apiSend(LEADS_API, "DELETE", null, "id="+encodeURIComponent(id)); pushToast("Gelöscht"); }
     catch(e){ flash("err", e.message || "Loeschen nicht erlaubt."); loadLeads(); }
   };
 
@@ -429,8 +453,6 @@ function MapLeads({ myId, isAdmin }) {
     <div className="page">
       <div className="section-title"><h2 className="serif">Läden & Leads</h2>
         <span className="meta">{leads.length} Leads · für alle sichtbar</span></div>
-
-      {msg && <div className={"banner " + (msg.type==="ok"?"ok":msg.type==="info"?"info":"")} style={{marginBottom:16}}>{msg.text}</div>}
 
       <div className="grid-map">
         <div className="card card-pad">
@@ -709,7 +731,9 @@ function Capacity({ cap, loadCap, isAdmin, myId }) {
     if (cap.tags && cap.tags[myId]) setMyLeft(String(cap.tags[myId].left||0));
   }, [cap, myId]);
 
-  const send = async (payload) => { try { await apiSend(CAP_API, "PATCH", payload); loadCap(); } catch(e){} };
+  useEffect(() => { loadCap(); }, [loadCap]);
+
+  const send = async (payload) => { try { await apiSend(CAP_API, "PATCH", payload); pushToast("Gespeichert ✓"); loadCap(); } catch(e){ pushToast("Fehler beim Speichern","err"); } };
 
   if (!cap) return <div className="page"><div className="center-state"><div><div className="spinner"></div>Lädt…</div></div></div>;
 
@@ -818,9 +842,15 @@ function App() {
     ni.init();
   }, [refresh, loadCap]);
 
-  const addSale=async(s)=>{ await apiSend(SALES_API,"POST",s); refresh(); };
-  const setStatus=async(id,status)=>{ await apiSend(SALES_API,"PATCH",{id,status}); refresh(); };
-  const removeSale=async(id)=>{ await apiSend(SALES_API,"DELETE",null,"id="+encodeURIComponent(id)); refresh(); };
+  useEffect(() => {
+    if (!user) return;
+    const iv = setInterval(() => loadCap(), 45000);
+    return () => clearInterval(iv);
+  }, [user, loadCap]);
+
+  const addSale=async(s)=>{ await apiSend(SALES_API,"POST",s); pushToast("Verkauf eingetragen ✓"); refresh(); };
+  const setStatus=async(id,status)=>{ await apiSend(SALES_API,"PATCH",{id,status}); pushToast("Gespeichert ✓"); refresh(); };
+  const removeSale=async(id)=>{ await apiSend(SALES_API,"DELETE",null,"id="+encodeURIComponent(id)); pushToast("Gelöscht"); refresh(); };
 
   let body;
   if(!ready){ body=<div className="center-state"><div><div className="spinner"></div>Lädt…</div></div>; }
@@ -848,6 +878,7 @@ function App() {
   }
 
   return (<>
+    <Toaster />
     <Topbar user={user} role={role} />
     {body}
     <footer className="site"><div className="in">
