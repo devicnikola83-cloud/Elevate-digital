@@ -353,7 +353,7 @@ function Landing() {
 /* ============================================================
    KARTE + LEADS  (Leaflet + Geoapify)
    ============================================================ */
-function MapLeads({ myId, isAdmin }) {
+function MapLeads({ myId, myName, isAdmin }) {
   const mapDiv = useRef(null);
   const mapRef = useRef(null);
   const markerRef = useRef(null);
@@ -416,7 +416,7 @@ function MapLeads({ myId, isAdmin }) {
         const j = await r.json();
         setSuggestions(j.features || []);
       } catch(e){ setSuggestions([]); }
-    }, 300);
+    }, 150);
   };
 
   const pick = (f) => {
@@ -441,11 +441,28 @@ function MapLeads({ myId, isAdmin }) {
   const selectBusiness = async () => {
     if (!selected) return;
     const payload = selected;
+    const tempId = "temp-" + Date.now();
+    const optimistic = {
+      id: tempId, placeId: payload.placeId, name: payload.name, address: payload.address, phone: payload.phone,
+      lat: payload.lat, lng: payload.lng, status: "neu", website: "unbekannt",
+      reservedBy: null, reservedAt: null,
+      createdBy: { id: meId, name: myName || "Du" }, createdAt: Date.now(), updatedAt: Date.now(),
+    };
     setSelected(null); setQ(""); touch();
-    try { const r = await apiSend(LEADS_API, "POST", payload);
-      if (r && r.lead) { recentAdd.current[r.lead.id] = Date.now(); setLeads(prev => [r.lead, ...prev.filter(l => l.id !== r.lead.id)]); }
-      pushToast("Unternehmen hinzugefügt ✓");
-    } catch(e){ flash("err","Konnte nicht übernehmen."); }
+    recentAdd.current[tempId] = Date.now();
+    setLeads(prev => [optimistic, ...prev]);           // sofort sichtbar
+    pushToast("Unternehmen hinzugefügt ✓");
+    try {
+      const r = await apiSend(LEADS_API, "POST", payload);
+      if (r && r.lead) {
+        recentAdd.current[r.lead.id] = Date.now();
+        delete recentAdd.current[tempId];
+        setLeads(prev => [r.lead, ...prev.filter(l => l.id !== tempId && l.id !== r.lead.id)]);
+      }
+    } catch(e){
+      setLeads(prev => prev.filter(l => l.id !== tempId));
+      flash("err","Konnte nicht übernehmen.");
+    }
   };
   const patchLead = async (id, changes) => {
     touch();
@@ -454,7 +471,7 @@ function MapLeads({ myId, isAdmin }) {
       const n = { ...l };
       if (changes.status !== undefined) n.status = changes.status;
       if (changes.website !== undefined) n.website = changes.website;
-      if (changes.reserve === true) { n.reservedBy = { id: meId, name: "Du" }; n.reservedAt = Date.now(); }
+      if (changes.reserve === true) { n.reservedBy = { id: meId, name: myName || "Du" }; n.reservedAt = Date.now(); }
       if (changes.reserve === false) { n.reservedBy = null; n.reservedAt = null; }
       return n;
     }));
@@ -918,7 +935,7 @@ function App() {
         </div>
       </div>
       {tab==="karte"
-        ? <MapLeads myId={user.id} isAdmin={role==="admin"} />
+        ? <MapLeads myId={user.id} myName={user.user_metadata?.full_name || user.email} isAdmin={role==="admin"} />
         : tab==="kapazitaet"
         ? <Capacity cap={cap} loadCap={loadCap} isAdmin={role==="admin"} myId={user.id} />
         : (role==="admin"
