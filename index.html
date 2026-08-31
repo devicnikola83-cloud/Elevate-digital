@@ -155,12 +155,11 @@
     padding:6px 13px; border-radius:999px; }
   .chip.on { background:var(--royal); border-color:var(--royal); color:#fff; }
 
-  .search-box { position:relative; margin-bottom:12px; }
+  .search-box { margin-bottom:12px; }
   .search-box input { width:100%; border:1px solid var(--line-2); border-radius:9px; padding:11px 12px; font-size:14px; }
   .search-box input:focus { outline:none; border-color:var(--royal); box-shadow:0 0 0 3px rgba(27,58,160,.12); }
-  .suggestions { position:absolute; z-index:1500; left:0; right:0; top:calc(100% + 4px); background:#fff;
-    border:1px solid var(--line-2); border-radius:10px; box-shadow:var(--shadow); overflow:hidden; }
-  .suggestion { padding:10px 12px; cursor:pointer; border-bottom:1px solid var(--line); }
+  .suggestions { margin-top:8px; background:#fff; border:1px solid var(--line-2); border-radius:10px; overflow:hidden; }
+  .suggestion { display:block; width:100%; text-align:left; border:none; background:#fff; padding:12px; cursor:pointer; border-bottom:1px solid var(--line); }
   .suggestion:last-child { border-bottom:none; }
   .suggestion:hover { background:var(--royal-lt); }
   .suggestion .s-name { font-weight:600; font-size:14px; }
@@ -220,6 +219,7 @@ const GEOAPIFY_KEY = "656df0a1940941f18f1a714b5979282b";
 
 const SALES_API = "/.netlify/functions/sales";
 const LEADS_API = "/.netlify/functions/leads";
+const CAP_API = "/.netlify/functions/capacity";
 const RATE = { website: 0.20, nfc: 0.60, backend: 0.10 };
 const TYPES = [
   { id:"website", label:"Webdesign / Local-SEO Setup", rate:"20 %" },
@@ -449,10 +449,10 @@ function MapLeads({ myId, isAdmin }) {
               {suggestions.length > 0 && (
                 <div className="suggestions">
                   {suggestions.map((f,i) => (
-                    <div key={(f.properties&&f.properties.place_id)||i} className="suggestion" onMouseDown={(e) => { e.preventDefault(); pick(f); }}>
+                    <button type="button" key={(f.properties&&f.properties.place_id)||i} className="suggestion" onClick={() => pick(f)}>
                       <div className="s-name">{(f.properties&&(f.properties.name||f.properties.address_line1))||f.properties.formatted}</div>
                       <div className="s-addr">{f.properties&&f.properties.formatted}</div>
-                    </div>
+                    </button>
                   ))}
                 </div>
               )}
@@ -694,6 +694,104 @@ function AdminDashboard({ data, setStatus, removeSale }) {
 }
 
 /* ============================================================ */
+function Capacity({ cap, loadCap, isAdmin, myId }) {
+  const [wNote, setWNote] = useState("");
+  const [nfcNote, setNfcNote] = useState("");
+  const [given, setGiven] = useState({});
+  const [myLeft, setMyLeft] = useState("");
+
+  useEffect(() => {
+    if (!cap) return;
+    setWNote(cap.websiteNote || "");
+    setNfcNote(cap.nfcNote || "");
+    const g = {}; Object.keys(cap.tags||{}).forEach(id => g[id] = String((cap.tags[id].given)||0));
+    setGiven(g);
+    if (cap.tags && cap.tags[myId]) setMyLeft(String(cap.tags[myId].left||0));
+  }, [cap, myId]);
+
+  const send = async (payload) => { try { await apiSend(CAP_API, "PATCH", payload); loadCap(); } catch(e){} };
+
+  if (!cap) return <div className="page"><div className="center-state"><div><div className="spinner"></div>Lädt…</div></div></div>;
+
+  const tags = cap.tags || {};
+  const mine = tags[myId] || { given:0, left:0, needMore:false };
+
+  return (
+    <div className="page">
+      <div className="section-title"><h2 className="serif">Kapazität</h2></div>
+      {isAdmin ? (
+        <div style={{display:"grid", gap:20}}>
+          <div className="card card-pad">
+            <div className="eyebrow">Website-Verkauf</div>
+            <div style={{display:"flex", alignItems:"center", gap:14, flexWrap:"wrap"}}>
+              <span className={"badge " + (cap.websitePaused ? "st-nicht_interessiert" : "st-verkauft")}>{cap.websitePaused ? "Pausiert" : "Aktiv"}</span>
+              <button className={"btn sm " + (cap.websitePaused ? "ok" : "danger")}
+                onClick={() => send({ type:"website", paused: !cap.websitePaused, note: wNote })}>
+                {cap.websitePaused ? "Wieder aktivieren" : "Verkauf pausieren"}</button>
+            </div>
+            <div className="field" style={{marginTop:14}}><label>Hinweis (z. B. „keine Kapazität bis 15.09.")</label>
+              <input value={wNote} onChange={e=>setWNote(e.target.value)} placeholder="Grund / bis wann" /></div>
+            <button className="btn sm line" onClick={()=>send({type:"website", paused:cap.websitePaused, note:wNote})}>Hinweis speichern</button>
+          </div>
+
+          <div className="card card-pad">
+            <div className="eyebrow">NFC-Tags · Nachschub</div>
+            <div className="field"><label>Hinweis fürs Team (z. B. „Neue Tags ab 20.09. da")</label>
+              <input value={nfcNote} onChange={e=>setNfcNote(e.target.value)} placeholder="Wann kommen neue Tags?" /></div>
+            <button className="btn sm line" onClick={()=>send({type:"nfc", note:nfcNote})}>Speichern</button>
+          </div>
+
+          <div className="card">
+            <div className="card-head"><h3>Tags pro Person</h3><span className="hint">{Object.keys(tags).length} im Team</span></div>
+            <div className="card-pad">
+              {Object.keys(tags).length===0 ? (<div className="empty"><p>Sobald sich jemand einloggt, erscheint er hier.</p></div>) :
+                Object.keys(tags).map(id => {
+                  const t = tags[id];
+                  return (
+                    <div className="lead" key={id}>
+                      <div className="lead-top"><div className="l-name">{t.name || "Unbekannt"}</div>
+                        {t.needMore && <span className="badge st-nicht_interessiert">braucht neue</span>}</div>
+                      <div className="lead-controls">
+                        <div className="mini"><label>Ausgegeben</label>
+                          <input style={{width:90}} inputMode="numeric" value={given[id] ?? ""} onChange={e=>setGiven({...given, [id]:e.target.value})} /></div>
+                        <div className="mini"><label>Übrig (Partner)</label><div style={{padding:"7px 0", fontWeight:600}}>{t.left||0}</div></div>
+                        <div className="spacer"></div>
+                        <button className="btn sm" onClick={()=>send({type:"given", userId:id, given:given[id], name:t.name})}>Speichern</button>
+                      </div>
+                    </div>
+                  );
+                })}
+            </div>
+          </div>
+        </div>
+      ) : (
+        <div style={{display:"grid", gap:20}}>
+          <div className="card card-pad">
+            <div className="eyebrow">Aktueller Status</div>
+            <div style={{display:"flex", flexDirection:"column", gap:10}}>
+              <div>Website-Verkauf: <span className={"badge " + (cap.websitePaused ? "st-nicht_interessiert" : "st-verkauft")}>{cap.websitePaused ? "Pausiert" : "Aktiv"}</span>
+                {cap.websitePaused && cap.websiteNote ? <span style={{color:"var(--muted)", fontSize:13}}> — {cap.websiteNote}</span> : null}</div>
+              {cap.nfcNote ? <div style={{fontSize:14}}>NFC-Nachschub: <b>{cap.nfcNote}</b></div> : null}
+            </div>
+          </div>
+          <div className="card card-pad">
+            <div className="eyebrow">Meine NFC-Tags</div>
+            <div style={{display:"flex", gap:24, flexWrap:"wrap", alignItems:"flex-end"}}>
+              <div><div style={{fontSize:11.5, color:"var(--muted)", fontWeight:600, textTransform:"uppercase"}}>Erhalten</div>
+                <div style={{fontFamily:"'Source Serif 4',serif", fontSize:28, fontWeight:700}}>{mine.given||0}</div></div>
+              <div className="field" style={{marginBottom:0}}><label>Noch übrig</label>
+                <input style={{width:110}} inputMode="numeric" value={myLeft} onChange={e=>setMyLeft(e.target.value)} /></div>
+              <label style={{display:"flex", alignItems:"center", gap:8, fontSize:14}}>
+                <input type="checkbox" checked={!!mine.needMore} onChange={e=>send({type:"mytags", left:myLeft, needMore:e.target.checked})} /> Ich brauche neue</label>
+            </div>
+            <button className="btn sm" style={{marginTop:14}} onClick={()=>send({type:"mytags", left:myLeft, needMore:mine.needMore})}>Aktualisieren</button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function App() {
   const [ready,setReady]=useState(false);
   const [user,setUser]=useState(null);
@@ -701,20 +799,24 @@ function App() {
   const [role,setRole]=useState(null);
   const [err,setErr]=useState("");
   const [tab,setTab]=useState("karte");
+  const [cap,setCap]=useState(null);
 
   const refresh = useCallback(async () => {
     try { setErr(""); const j = await apiGet(SALES_API); setRole(j.role); setData(j); }
     catch(e){ setErr("Verkaufsdaten konnten nicht geladen werden ("+e.message+")."); }
   }, []);
+  const loadCap = useCallback(async () => {
+    try { const j = await apiGet(CAP_API); setCap(j.data); } catch(e){}
+  }, []);
 
   useEffect(() => {
     const ni = window.netlifyIdentity;
     if(!ni){ setErr("Login-System nicht geladen."); setReady(true); return; }
-    ni.on("init", u => { setUser(u); setReady(true); if(u) refresh(); });
-    ni.on("login", u => { setUser(u); ni.close(); refresh(); });
-    ni.on("logout", () => { setUser(null); setData(null); setRole(null); });
+    ni.on("init", u => { setUser(u); setReady(true); if(u){ refresh(); loadCap(); } });
+    ni.on("login", u => { setUser(u); ni.close(); refresh(); loadCap(); });
+    ni.on("logout", () => { setUser(null); setData(null); setRole(null); setCap(null); });
     ni.init();
-  }, [refresh]);
+  }, [refresh, loadCap]);
 
   const addSale=async(s)=>{ await apiSend(SALES_API,"POST",s); refresh(); };
   const setStatus=async(id,status)=>{ await apiSend(SALES_API,"PATCH",{id,status}); refresh(); };
@@ -728,13 +830,17 @@ function App() {
     body = <>
       <div className="page" style={{paddingTop:16,paddingBottom:0}}>
         {err && <div className="banner">{err}</div>}
+        {cap && cap.websitePaused && <div className="banner info" style={{marginBottom:12}}>Website-Verkauf pausiert{cap.websiteNote ? " — " + cap.websiteNote : ""}</div>}
         <div className="tabs">
           <button className={"tab"+(tab==="karte"?" on":"")} onClick={()=>setTab("karte")}>Karte</button>
           <button className={"tab"+(tab==="provisionen"?" on":"")} onClick={()=>setTab("provisionen")}>Provisionen</button>
+          <button className={"tab"+(tab==="kapazitaet"?" on":"")} onClick={()=>setTab("kapazitaet")}>Kapazität</button>
         </div>
       </div>
       {tab==="karte"
         ? <MapLeads myId={user.id} isAdmin={role==="admin"} />
+        : tab==="kapazitaet"
+        ? <Capacity cap={cap} loadCap={loadCap} isAdmin={role==="admin"} myId={user.id} />
         : (role==="admin"
             ? <AdminDashboard data={data} setStatus={setStatus} removeSale={removeSale} />
             : <AffiliateDashboard user={user} data={data} addSale={addSale} setStatus={setStatus} removeSale={removeSale} />)}
