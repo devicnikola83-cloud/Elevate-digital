@@ -353,6 +353,12 @@ function Landing() {
 /* ============================================================
    KARTE + LEADS  (Leaflet + Geoapify)
    ============================================================ */
+const LS = { leads: "ed_leads_v1", add: "ed_add_v1", del: "ed_del_v1", patch: "ed_patch_v1" };
+const PENDING_MS = 90000;
+function lsGet(k, d) { try { const v = JSON.parse(localStorage.getItem(k)); return v == null ? d : v; } catch (e) { return d; } }
+function lsSet(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} }
+function prunePending(o) { const now = Date.now(); Object.keys(o).forEach(k => { const t = typeof o[k] === "number" ? o[k] : (o[k] && o[k]._t) || 0; if (now - t > PENDING_MS) delete o[k]; }); }
+
 function MapLeads({ myId, myName, isAdmin }) {
   const mapDiv = useRef(null);
   const mapRef = useRef(null);
@@ -361,14 +367,17 @@ function MapLeads({ myId, myName, isAdmin }) {
   const [q, setQ] = useState("");
   const [suggestions, setSuggestions] = useState([]);
   const [selected, setSelected] = useState(null);
-  const [leads, setLeads] = useState([]);
+  const [leads, setLeads] = useState(() => lsGet(LS.leads, []));
   const [noKey, setNoKey] = useState(false);
   const [meId, setMeId] = useState(myId);
   const [reserveDays, setReserveDays] = useState(3);
   const suppressUntil = useRef(0);
-  const recentAdd = useRef({});
-  const recentDel = useRef({});
+  const recentAdd = useRef(lsGet(LS.add, {}));
+  const recentDel = useRef(lsGet(LS.del, {}));
+  const recentPatch = useRef(lsGet(LS.patch, {}));
   const touch = () => { suppressUntil.current = Date.now() + 5000; };
+  const persistPending = () => { lsSet(LS.add, recentAdd.current); lsSet(LS.del, recentDel.current); lsSet(LS.patch, recentPatch.current); };
+  useEffect(() => { lsSet(LS.leads, leads); }, [leads]);
 
   const flash = (type, text) => pushToast(text, type === "err" ? "err" : type === "info" ? "info" : "ok");
 
@@ -377,15 +386,39 @@ function MapLeads({ myId, myName, isAdmin }) {
       const j = await apiGet(LEADS_API);
       if (j.myId) setMeId(j.myId);
       if (j.reserveDays) setReserveDays(j.reserveDays);
-      const now = Date.now();
-      // kürzlich gelöschte noch kurz ausblenden (Server-Verzögerung)
-      const server = (j.leads || []).filter(l => !(recentDel.current[l.id] && now - recentDel.current[l.id] < 15000));
+      const raw = j.leads || [];
+      const rawIds = new Set(raw.map(l => l.id));
+      // Pending aufräumen, sobald der Server den Stand zeigt
+      Object.keys(recentAdd.current).forEach(id => { if (rawIds.has(id)) delete recentAdd.current[id]; });
+      Object.keys(recentDel.current).forEach(id => { if (!rawIds.has(id)) delete recentDel.current[id]; });
+      Object.keys(recentPatch.current).forEach(id => {
+        const sl = raw.find(l => l.id === id), rp = recentPatch.current[id];
+        if (sl && rp) {
+          const sOk = !("status" in rp) || sl.status === rp.status;
+          const wOk = !("website" in rp) || sl.website === rp.website;
+          const rOk = !("reservedBy" in rp) || ((sl.reservedBy ? sl.reservedBy.id : null) === (rp.reservedBy ? rp.reservedBy.id : null));
+          if (sOk && wOk && rOk) delete recentPatch.current[id];
+        }
+      });
+      prunePending(recentAdd.current); prunePending(recentDel.current); prunePending(recentPatch.current);
+      // Ansicht bauen: gelöschte raus, geänderte Felder lokal überschreiben
+      let server = raw.filter(l => !recentDel.current[l.id]).map(l => {
+        const rp = recentPatch.current[l.id];
+        if (!rp) return l;
+        const m = { ...l };
+        if ("status" in rp) m.status = rp.status;
+        if ("website" in rp) m.website = rp.website;
+        if ("reservedBy" in rp) { m.reservedBy = rp.reservedBy; m.reservedAt = rp.reservedAt; }
+        return m;
+      });
       const ids = new Set(server.map(l => l.id));
       setLeads(prev => {
-        // kürzlich hinzugefügte behalten, bis der Server sie listet
-        const keep = prev.filter(l => !ids.has(l.id) && recentAdd.current[l.id] && now - recentAdd.current[l.id] < 15000);
-        return [...keep, ...server];
+        const keep = prev.filter(l => !ids.has(l.id) && recentAdd.current[l.id]);
+        const merged = [...keep, ...server];
+        lsSet(LS.leads, merged);
+        return merged;
       });
+      persistPending();
     } catch(e){ flash("err","Leads konnten nicht geladen werden."); }
   }, []);
   useEffect(() => { loadLeads(); }, [loadLeads]);
@@ -449,7 +482,7 @@ function MapLeads({ myId, myName, isAdmin }) {
       createdBy: { id: meId, name: myName || "Du" }, createdAt: Date.now(), updatedAt: Date.now(),
     };
     setSelected(null); setQ(""); touch();
-    recentAdd.current[tempId] = Date.now();
+    recentAdd.current[tempId] = Date.now(); persistPending();
     setLeads(prev => [optimistic, ...prev]);           // sofort sichtbar
     pushToast("Unternehmen hinzugefügt ✓");
     try {
@@ -457,15 +490,24 @@ function MapLeads({ myId, myName, isAdmin }) {
       if (r && r.lead) {
         recentAdd.current[r.lead.id] = Date.now();
         delete recentAdd.current[tempId];
+        persistPending();
         setLeads(prev => [r.lead, ...prev.filter(l => l.id !== tempId && l.id !== r.lead.id)]);
       }
     } catch(e){
+      delete recentAdd.current[tempId]; persistPending();
       setLeads(prev => prev.filter(l => l.id !== tempId));
       flash("err","Konnte nicht übernehmen.");
     }
   };
   const patchLead = async (id, changes) => {
     touch();
+    const rp = recentPatch.current[id] || {};
+    if (changes.status !== undefined) rp.status = changes.status;
+    if (changes.website !== undefined) rp.website = changes.website;
+    if (changes.reserve === true) { rp.reservedBy = { id: meId, name: myName || "Du" }; rp.reservedAt = Date.now(); }
+    if (changes.reserve === false) { rp.reservedBy = null; rp.reservedAt = null; }
+    rp._t = Date.now();
+    recentPatch.current[id] = rp; persistPending();
     setLeads(prev => prev.map(l => {
       if (l.id !== id) return l;
       const n = { ...l };
@@ -476,13 +518,13 @@ function MapLeads({ myId, myName, isAdmin }) {
       return n;
     }));
     try { const r = await apiSend(LEADS_API, "PATCH", { id, ...changes }); if (r && r.lead) setLeads(prev => prev.map(l => l.id === id ? r.lead : l)); pushToast("Gespeichert ✓"); }
-    catch(e){ flash("err", e.message || "Fehler."); loadLeads(); }
+    catch(e){ delete recentPatch.current[id]; persistPending(); flash("err", e.message || "Fehler."); loadLeads(); }
   };
   const removeLead = async (id) => {
-    touch(); recentDel.current[id] = Date.now();
+    touch(); recentDel.current[id] = Date.now(); persistPending();
     setLeads(prev => prev.filter(l => l.id !== id));
     try { await apiSend(LEADS_API, "DELETE", null, "id="+encodeURIComponent(id)); pushToast("Gelöscht"); }
-    catch(e){ flash("err", e.message || "Loeschen nicht erlaubt."); loadLeads(); }
+    catch(e){ delete recentDel.current[id]; persistPending(); flash("err", e.message || "Loeschen nicht erlaubt."); loadLeads(); }
   };
 
   const sorted = leads.slice().sort((a,b) => b.updatedAt - a.updatedAt);
