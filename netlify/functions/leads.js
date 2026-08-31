@@ -1,15 +1,23 @@
 import { connectLambda, getStore } from "@netlify/blobs";
 
-/* Geteilte Lead-Liste: alle sehen alle Leads. Liegt als JSON-Array unter "leads". */
+/* Geteilte Lead-Liste: alle sehen alle Leads. Liegt als JSON-Array unter "leads".
+   Reservierungs-Fairness: max. MAX_RES aktive Reservierungen pro Person,
+   jede Reservierung läuft nach RESERVE_DAYS automatisch ab. */
 const KEY = "leads";
 const STATUSES = ["neu", "interessiert", "nicht_interessiert", "termin", "verkauft"];
 const WEBSITE = ["unbekannt", "interessiert", "vielleicht", "nicht_interessiert"];
+const RESERVE_DAYS = 3;
+const RESERVE_MS = RESERVE_DAYS * 24 * 60 * 60 * 1000;
+const MAX_RES = 3;
 
 const res = (data, statusCode = 200) => ({
   statusCode,
   headers: { "Content-Type": "application/json" },
   body: JSON.stringify(data),
 });
+
+const isActiveRes = (l) =>
+  l.reservedBy && l.reservedAt && (Date.now() - l.reservedAt) < RESERVE_MS;
 
 export const handler = async (event, context) => {
   connectLambda(event);
@@ -29,9 +37,24 @@ export const handler = async (event, context) => {
   const persist = () => store.setJSON(KEY, leads);
   const method = event.httpMethod;
 
-  /* ---------- LESEN: alle Leads ---------- */
+  /* ---------- LESEN: abgelaufene Reservierungen automatisch freigeben ---------- */
   if (method === "GET") {
-    return res({ role: isAdmin ? "admin" : "affiliate", myId: me.id, leads });
+    let changed = false;
+    for (const l of leads) {
+      if (l.reservedBy && !isActiveRes(l)) {
+        l.reservedBy = null;
+        l.reservedAt = null;
+        changed = true;
+      }
+    }
+    if (changed) await persist();
+    return res({
+      role: isAdmin ? "admin" : "affiliate",
+      myId: me.id,
+      reserveDays: RESERVE_DAYS,
+      maxRes: MAX_RES,
+      leads,
+    });
   }
 
   /* ---------- UNTERNEHMEN AUSWÄHLEN (neuer Lead) ---------- */
@@ -52,6 +75,7 @@ export const handler = async (event, context) => {
       status: "neu",
       website: "unbekannt",
       reservedBy: null,
+      reservedAt: null,
       createdBy: me,
       createdAt: Date.now(),
       updatedAt: Date.now(),
@@ -77,8 +101,20 @@ export const handler = async (event, context) => {
       if (!WEBSITE.includes(b.website)) return res({ error: "Wert ungültig" }, 400);
       l.website = b.website;
     }
-    if (b.reserve === true) l.reservedBy = me;
-    if (b.reserve === false) l.reservedBy = null;
+    if (b.reserve === true) {
+      // Fairness: max. MAX_RES aktive Reservierungen pro Person
+      const active = leads.filter(
+        (x) => x.id !== l.id && x.reservedBy && x.reservedBy.id === me.id && isActiveRes(x)
+      ).length;
+      if (active >= MAX_RES)
+        return res({ error: "Maximal " + MAX_RES + " Reservierungen gleichzeitig" }, 403);
+      l.reservedBy = me;
+      l.reservedAt = Date.now();
+    }
+    if (b.reserve === false) {
+      l.reservedBy = null;
+      l.reservedAt = null;
+    }
     l.updatedAt = Date.now();
     await persist();
     return res({ ok: true, lead: l });
