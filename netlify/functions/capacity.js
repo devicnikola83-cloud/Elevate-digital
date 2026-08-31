@@ -24,7 +24,7 @@ export const handler = async (event, context) => {
     name: (user.user_metadata && user.user_metadata.full_name) || user.email,
   };
 
-  const store = getStore("elevate");
+  const store = getStore({ name: "elevate", consistency: "strong" });
   const data = (await store.get(KEY, { type: "json" })) || { ...DEFAULT };
   if (!data.tags) data.tags = {};
   const persist = () => store.setJSON(KEY, data);
