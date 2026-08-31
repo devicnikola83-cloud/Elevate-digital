@@ -37,17 +37,10 @@ export const handler = async (event, context) => {
   const persist = () => store.setJSON(KEY, leads);
   const method = event.httpMethod;
 
-  /* ---------- LESEN: abgelaufene Reservierungen automatisch freigeben ---------- */
+  /* ---------- LESEN (nur lesen, kein Schreiben) ----------
+     Abgelaufene Reservierungen werden im Frontend als "frei" angezeigt und
+     bei der Limit-Prüfung (isActiveRes) ignoriert. */
   if (method === "GET") {
-    let changed = false;
-    for (const l of leads) {
-      if (l.reservedBy && !isActiveRes(l)) {
-        l.reservedBy = null;
-        l.reservedAt = null;
-        changed = true;
-      }
-    }
-    if (changed) await persist();
     return res({
       role: isAdmin ? "admin" : "affiliate",
       myId: me.id,
@@ -120,13 +113,15 @@ export const handler = async (event, context) => {
     return res({ ok: true, lead: l });
   }
 
-  /* ---------- LÖSCHEN ---------- */
+  /* ---------- LÖSCHEN (idempotent — löscht immer) ---------- */
   if (method === "DELETE") {
-    const id = event.queryStringParameters && event.queryStringParameters.id;
+    let id = event.queryStringParameters && event.queryStringParameters.id;
+    if (!id && event.body) { try { id = JSON.parse(event.body).id; } catch (e) {} }
+    if (!id) return res({ error: "Keine ID" }, 400);
     const l = leads.find((x) => x.id === id);
-    if (!l) return res({ error: "Nicht gefunden" }, 404);
-    if (!isAdmin && l.createdBy.id !== me.id)
-      return res({ error: "Nicht erlaubt" }, 403);
+    // Rechte nur prüfen, wenn der Lead (noch) gefunden wird
+    if (l && !isAdmin && l.createdBy.id !== me.id)
+      return res({ error: "Nur der Ersteller darf löschen" }, 403);
     await store.setJSON(KEY, leads.filter((x) => x.id !== id));
     return res({ ok: true });
   }
