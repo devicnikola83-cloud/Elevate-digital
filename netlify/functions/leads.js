@@ -39,9 +39,6 @@ export const handler = async (event, context) => {
     const b = JSON.parse(event.body || "{}");
     if (!b.placeId || !b.name) return res({ error: "Ungültige Daten" }, 400);
 
-    if (leads.find((l) => l.placeId === b.placeId))
-      return res({ ok: true, duplicate: true }); // schon in der Liste
-
     leads.push({
       id:
         (globalThis.crypto && globalThis.crypto.randomUUID
