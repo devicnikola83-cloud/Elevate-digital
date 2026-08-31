@@ -1,9 +1,10 @@
 import { connectLambda, getStore } from "@netlify/blobs";
 
-/* Geteilte Lead-Liste: alle sehen alle Leads. Liegt als JSON-Array unter "leads".
-   Reservierungs-Fairness: max. MAX_RES aktive Reservierungen pro Person,
-   jede Reservierung läuft nach RESERVE_DAYS automatisch ab. */
-const KEY = "leads";
+/* Jeder Lead ist ein EIGENER Datensatz unter dem Schlüssel "lead:<id>".
+   Dadurch überschreiben sich gleichzeitige Änderungen NICHT mehr
+   (kein Lesen-Ändern-Zurückschreiben eines großen Arrays). */
+const PREFIX = "lead:";
+const OLD_KEY = "leads";
 const STATUSES = ["neu", "interessiert", "nicht_interessiert", "termin", "verkauft"];
 const WEBSITE = ["unbekannt", "interessiert", "vielleicht", "nicht_interessiert"];
 const RESERVE_DAYS = 3;
@@ -15,9 +16,30 @@ const res = (data, statusCode = 200) => ({
   headers: { "Content-Type": "application/json" },
   body: JSON.stringify(data),
 });
-
 const isActiveRes = (l) =>
   l.reservedBy && l.reservedAt && (Date.now() - l.reservedAt) < RESERVE_MS;
+const newId = () =>
+  (globalThis.crypto && globalThis.crypto.randomUUID)
+    ? globalThis.crypto.randomUUID()
+    : String(Date.now()) + Math.random().toString(16).slice(2);
+
+async function listLeads(store) {
+  const { blobs } = await store.list({ prefix: PREFIX });
+  const arr = await Promise.all(blobs.map((b) => store.get(b.key, { type: "json" })));
+  return arr.filter(Boolean);
+}
+
+/* Einmalige Migration: alter Sammel-Datensatz -> Einzel-Datensätze */
+async function migrateIfNeeded(store) {
+  let old = null;
+  try { old = await store.get(OLD_KEY, { type: "json" }); } catch (e) {}
+  if (Array.isArray(old) && old.length) {
+    await Promise.all(old.map((l) => (l && l.id ? store.setJSON(PREFIX + l.id, l) : null)));
+  }
+  if (old !== null && old !== undefined) {
+    try { await store.delete(OLD_KEY); } catch (e) {}
+  }
+}
 
 export const handler = async (event, context) => {
   connectLambda(event);
@@ -33,14 +55,12 @@ export const handler = async (event, context) => {
   };
 
   const store = getStore("elevate");
-  const leads = (await store.get(KEY, { type: "json" })) || [];
-  const persist = () => store.setJSON(KEY, leads);
   const method = event.httpMethod;
 
-  /* ---------- LESEN (nur lesen, kein Schreiben) ----------
-     Abgelaufene Reservierungen werden im Frontend als "frei" angezeigt und
-     bei der Limit-Prüfung (isActiveRes) ignoriert. */
+  /* ---------- LESEN ---------- */
   if (method === "GET") {
+    await migrateIfNeeded(store);
+    const leads = await listLeads(store);
     return res({
       role: isAdmin ? "admin" : "affiliate",
       myId: me.id,
@@ -50,16 +70,12 @@ export const handler = async (event, context) => {
     });
   }
 
-  /* ---------- UNTERNEHMEN AUSWÄHLEN (neuer Lead) ---------- */
+  /* ---------- NEUER LEAD ---------- */
   if (method === "POST") {
     const b = JSON.parse(event.body || "{}");
     if (!b.placeId || !b.name) return res({ error: "Ungültige Daten" }, 400);
-
     const lead = {
-      id:
-        (globalThis.crypto && globalThis.crypto.randomUUID
-          ? globalThis.crypto.randomUUID()
-          : String(Date.now()) + Math.random().toString(16).slice(2)),
+      id: newId(),
       placeId: b.placeId,
       name: String(b.name).slice(0, 200),
       address: b.address ? String(b.address).slice(0, 300) : "",
@@ -73,15 +89,14 @@ export const handler = async (event, context) => {
       createdAt: Date.now(),
       updatedAt: Date.now(),
     };
-    leads.push(lead);
-    await persist();
+    await store.setJSON(PREFIX + lead.id, lead);
     return res({ ok: true, lead });
   }
 
-  /* ---------- VERWALTEN: nur der Ersteller (oder Admin) ---------- */
+  /* ---------- ÄNDERN (nur Ersteller/Admin) ---------- */
   if (method === "PATCH") {
     const b = JSON.parse(event.body || "{}");
-    const l = leads.find((x) => x.id === b.id);
+    const l = await store.get(PREFIX + b.id, { type: "json" });
     if (!l) return res({ error: "Nicht gefunden" }, 404);
     if (!isAdmin && l.createdBy.id !== me.id)
       return res({ error: "Nur der Ersteller darf diesen Lead ändern" }, 403);
@@ -95,8 +110,8 @@ export const handler = async (event, context) => {
       l.website = b.website;
     }
     if (b.reserve === true) {
-      // Fairness: max. MAX_RES aktive Reservierungen pro Person
-      const active = leads.filter(
+      const all = await listLeads(store);
+      const active = all.filter(
         (x) => x.id !== l.id && x.reservedBy && x.reservedBy.id === me.id && isActiveRes(x)
       ).length;
       if (active >= MAX_RES)
@@ -109,20 +124,19 @@ export const handler = async (event, context) => {
       l.reservedAt = null;
     }
     l.updatedAt = Date.now();
-    await persist();
+    await store.setJSON(PREFIX + l.id, l);
     return res({ ok: true, lead: l });
   }
 
-  /* ---------- LÖSCHEN (idempotent — löscht immer) ---------- */
+  /* ---------- LÖSCHEN (idempotent) ---------- */
   if (method === "DELETE") {
     let id = event.queryStringParameters && event.queryStringParameters.id;
     if (!id && event.body) { try { id = JSON.parse(event.body).id; } catch (e) {} }
     if (!id) return res({ error: "Keine ID" }, 400);
-    const l = leads.find((x) => x.id === id);
-    // Rechte nur prüfen, wenn der Lead (noch) gefunden wird
+    const l = await store.get(PREFIX + id, { type: "json" });
     if (l && !isAdmin && l.createdBy.id !== me.id)
       return res({ error: "Nur der Ersteller darf löschen" }, 403);
-    await store.setJSON(KEY, leads.filter((x) => x.id !== id));
+    await store.delete(PREFIX + id);
     return res({ ok: true });
   }
 
