@@ -26,7 +26,7 @@ export const handler = async (event, context) => {
   };
 
   const store = getStore("elevate");
-  const sales = (await store.get(KEY, { type: "json" })) || [];
+  const sales = (await store.get(KEY, { type: "json", consistency: "strong" })) || [];
   const persist = () => store.setJSON(KEY, sales);
   const method = event.httpMethod;
 
