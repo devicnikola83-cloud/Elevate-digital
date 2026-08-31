@@ -520,12 +520,14 @@ function MapLeads({ myId, isAdmin }) {
 }
 
 function LeadCard({ lead, myId, isAdmin, reserveDays, onStatus, onWebsite, onReserve, onFree, onRemove }) {
-  const reserved = lead.reservedBy;
-  const mine = reserved && reserved.id === myId;
+  const rb = lead.reservedBy;
+  const active = !!(rb && lead.reservedAt && (Date.now() - lead.reservedAt) < (reserveDays||3)*86400000);
+  const reserved = active ? rb : null;
+  const mine = active && rb.id === myId;
   const owner = lead.createdBy || {};
   const canEdit = isAdmin || owner.id === myId;
-  const daysLeft = (reserved && lead.reservedAt) ? Math.max(0, Math.ceil((lead.reservedAt + (reserveDays||3)*86400000 - Date.now())/86400000)) : null;
-  const resvLabel = reserved ? ((mine ? "Von dir reserviert" : "Reserviert · " + reserved.name) + (daysLeft!=null ? " · noch " + daysLeft + (daysLeft===1?" Tag":" Tage") : "")) : "";
+  const daysLeft = active ? Math.max(0, Math.ceil((lead.reservedAt + (reserveDays||3)*86400000 - Date.now())/86400000)) : null;
+  const resvLabel = active ? ((mine ? "Von dir reserviert" : "Reserviert · " + rb.name) + (daysLeft!=null ? " · noch " + daysLeft + (daysLeft===1?" Tag":" Tage") : "")) : "";
   return (
     <div className="lead">
       <div className="lead-top">
