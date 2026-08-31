@@ -24,7 +24,7 @@ export const handler = async (event, context) => {
     name: (user.user_metadata && user.user_metadata.full_name) || user.email,
   };
 
-  const store = getStore({ name: "elevate", consistency: "strong" });
+  const store = getStore("elevate");
   const leads = (await store.get(KEY, { type: "json" })) || [];
   const persist = () => store.setJSON(KEY, leads);
   const method = event.httpMethod;
@@ -39,7 +39,7 @@ export const handler = async (event, context) => {
     const b = JSON.parse(event.body || "{}");
     if (!b.placeId || !b.name) return res({ error: "Ungültige Daten" }, 400);
 
-    leads.push({
+    const lead = {
       id:
         (globalThis.crypto && globalThis.crypto.randomUUID
           ? globalThis.crypto.randomUUID()
@@ -55,9 +55,10 @@ export const handler = async (event, context) => {
       createdBy: me,
       createdAt: Date.now(),
       updatedAt: Date.now(),
-    });
+    };
+    leads.push(lead);
     await persist();
-    return res({ ok: true });
+    return res({ ok: true, lead });
   }
 
   /* ---------- VERWALTEN: nur der Ersteller (oder Admin) ---------- */
@@ -80,7 +81,7 @@ export const handler = async (event, context) => {
     if (b.reserve === false) l.reservedBy = null;
     l.updatedAt = Date.now();
     await persist();
-    return res({ ok: true });
+    return res({ ok: true, lead: l });
   }
 
   /* ---------- LÖSCHEN ---------- */
