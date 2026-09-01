@@ -838,6 +838,7 @@ function Capacity({ cap, loadCap, isAdmin, myId }) {
       else if (payload.type === "nfc") { n.nfcNote = payload.note || ""; }
       else if (payload.type === "given") { n.tags[payload.userId] = { ...(n.tags[payload.userId]||{}), given: parseInt(payload.given,10)||0, name: payload.name || (n.tags[payload.userId]||{}).name }; }
       else if (payload.type === "mytags") { const cur = n.tags[meId]||{}; n.tags[meId] = { ...cur, left: payload.left!==undefined ? (parseInt(payload.left,10)||0) : cur.left, needMore: payload.needMore!==undefined ? !!payload.needMore : cur.needMore }; }
+      else if (payload.type === "removeTag") { delete n.tags[payload.userId]; }
       return n;
     });
     try { const r = await apiSend(CAP_API, "PATCH", payload); if (r && r.data) setLocalCap(r.data); pushToast("Gespeichert ✓"); loadCap(); }
@@ -891,6 +892,7 @@ function Capacity({ cap, loadCap, isAdmin, myId }) {
                         <div className="mini"><label>Übrig (Partner)</label><div style={{padding:"7px 0", fontWeight:600}}>{t.left||0}</div></div>
                         <div className="spacer"></div>
                         <button className="btn sm" onClick={()=>send({type:"given", userId:id, given:given[id], name:t.name})}>Speichern</button>
+                        <button className="btn danger sm" onClick={()=>{ if(confirm("Eintrag \""+(t.name||"Unbekannt")+"\" wirklich entfernen?")) send({type:"removeTag", userId:id}); }}>Entfernen</button>
                       </div>
                     </div>
                   );
