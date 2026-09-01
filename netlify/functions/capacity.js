@@ -56,6 +56,8 @@ export const handler = async (event, context) => {
         t.given = Math.max(0, parseInt(b.given, 10) || 0);
         if (b.name) t.name = b.name;
         data.tags[b.userId] = t;
+      } else if (b.type === "removeTag") {
+        delete data.tags[b.userId];
       } else return res({ error: "Unbekannt" }, 400);
     } else {
       if (b.type !== "mytags") return res({ error: "Nicht erlaubt" }, 403);
